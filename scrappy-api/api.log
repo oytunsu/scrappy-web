@@ -1,0 +1,9 @@
+INFO:     Will watch for changes in these directories: ['/Users/oytunsu/Desktop/dev/tool/scrappy-web/scrappy-api']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [65374] using StatReload
+INFO:     Started server process [65519]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:62841 - "GET /api/v1/export/businesses HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62899 - "GET /api/v1/export/businesses HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62931 - "GET /api/v1/export/businesses HTTP/1.1" 200 OK

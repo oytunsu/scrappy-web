@@ -47,10 +47,11 @@ model Business {
   directionLink      String?  @db.Text
   priceInfo          String?  @db.VarChar(255)
   priceReportedCount Int?     @default(0)
-  operatingHours     String?  @db.Text
+  operatingHours     Json?
   phone              String?  @db.VarChar(50)
   imageUrl           String?  @db.Text
   website            String?  @db.Text
+  reviews            Json?
   category           Category @relation(fields: [categoryId], references: [id])
   categoryId         Int
   district           District @relation(fields: [districtId], references: [id])

@@ -63,7 +63,12 @@ class ScraperEngine {
     }
 
     public async start() {
-        if (this.status.isRunning) return
+        // Eğer isRunning true ama browser null ise, bu bir stale state durumudur (crash vs). Sıfırla.
+        if (this.status.isRunning && !this.browser) {
+            this.status.isRunning = false;
+        }
+
+        if (this.status.isRunning) return;
 
         this.status.isRunning = true
         this.shouldStop = false
@@ -145,10 +150,13 @@ class ScraperEngine {
                 await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 })
                 await page.waitForTimeout(2500)
 
-                const data = await page.evaluate(() => {
+                // 1. Özet Verileri (İsim, Telefon vs) DOM'dan Çek
+                const overviewData = await page.evaluate(() => {
                     const cleanText = (text: string | null | undefined) => {
                         if (!text) return '';
                         return text
+                            .replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u202F\u2026]/g, '') // Görünmez karakterler ve fazla noktalar
+                            .replace(/[–—]/g, '-') // Tüm tire çeşitlerini standart tireye çevir
                             .replace(/[\n\r\t]+/g, ' ')
                             .replace(/\s+/g, ' ')
                             .trim();
@@ -156,17 +164,15 @@ class ScraperEngine {
 
                     const getElementText = (selector: string) => {
                         const el = document.querySelector(selector);
-                        return el ? cleanText((el as any).innerText || (el as any).textContent) : '';
+                        if (!el) return '';
+                        const text = (el as HTMLElement).innerText || el.textContent || '';
+                        return cleanText(text).replace(/^[\s\W]+/, ''); // Başındaki gereksiz boşlukları/noktalama işaretlerini at
                     };
 
-                    // 1. Name
                     const name = cleanText(document.querySelector('h1')?.textContent) || '';
-
-                    // 2. Rating
                     const ratingText = document.querySelector('div.F7nice span[aria-hidden="true"]')?.textContent || '0';
                     const rating = parseFloat(ratingText.replace(',', '.')) || 0;
 
-                    // 3. Review Count
                     const reviewEl = document.querySelector('div.F7nice span[aria-label*="review"], div.F7nice span[aria-label*="yorum"]');
                     let reviewCount = 0;
                     if (reviewEl) {
@@ -175,16 +181,14 @@ class ScraperEngine {
                         if (match) reviewCount = parseInt(match[1]);
                     }
 
-                    // 4. Address
-                    const address = getElementText('button[data-item-id="address"]');
+                    // Google'da bazen "Adres: " gibi prefixler olur, iconlardan dolayı başta ekstra sembol kalabilir.
+                    let address = getElementText('button[data-item-id="address"]');
+                    if (address.toLowerCase().includes('adres')) address = cleanText(address.replace(/adres/i, '').replace(/^[:\s]+/, ''));
 
-                    // 5. Phone
-                    const phone = getElementText('button[data-item-id*="phone"]');
+                    let phone = getElementText('button[data-item-id*="phone"]');
 
-                    // 6. Website
                     const website = document.querySelector('a[data-item-id="authority"]')?.getAttribute('href') || '';
 
-                    // 7. Price Info
                     let priceInfo = 'N/A';
                     const priceEl = document.querySelector('span[aria-label*="Price"], span[aria-label*="Fiyat"], span[aria-label*="price"]');
                     if (priceEl) {
@@ -198,40 +202,182 @@ class ScraperEngine {
                         if (priceSpan) priceInfo = cleanText((priceSpan as any).innerText);
                     }
 
-                    // 8. Operating Hours
                     let operatingHours = 'N/A';
-                    const hoursEl = document.querySelector('div[data-item-id*="oh"], [aria-label*="Saatler"], [aria-label*="Hours"]');
-                    if (hoursEl) {
-                        operatingHours = cleanText((hoursEl as any).innerText || hoursEl.getAttribute('aria-label') || hoursEl.textContent);
+
+                    // Yöntem 1: Aria-label bul (Genelde 'Saatler: ...' şeklindedir)
+                    const hoursButton = document.querySelector('div[data-item-id="oh"], button[data-item-id="oh"]') || document.querySelector('.t39OBd');
+                    if (hoursButton) {
+                        const ariaLabel = hoursButton.getAttribute('aria-label') || '';
+                        if (ariaLabel.length > 5 && (ariaLabel.toLowerCase().includes('saat') || ariaLabel.toLowerCase().includes('hour'))) {
+                            operatingHours = cleanText(ariaLabel.replace(/Gizle|Göster|Hide|Show/ig, '').replace(/haftanın saatleri/ig, ''));
+                        } else {
+                            // Yöntem 2: Tablo / Detay içinde ara
+                            const hoursTable = document.querySelector('table.eKPiq'); // Bazen saatler tablo içindedir
+                            if (hoursTable) {
+                                operatingHours = cleanText((hoursTable as HTMLElement).innerText);
+                            } else {
+                                // Yöntem 3: Kapsayıcı butonun içindeki tüm metni al fakat sağındaki oklardan kurtul
+                                const rawText = (hoursButton as HTMLElement).innerText || '';
+                                if (rawText.length > 5) {
+                                    operatingHours = cleanText(rawText.replace(//g, '').replace(//g, ''));
+                                }
+                            }
+                        }
                     }
 
-                    // 9. Reported Count
+                    // İşletmelerde çalışma saatleri özel div'lere gömülmüş olabilir. (Yöntem 4: Genel arama)
+                    if (operatingHours === 'N/A' || operatingHours.length < 5 || operatingHours.length > 500) {
+                        const allDivs = Array.from(document.querySelectorAll('div, span')); // Sadece div değil spanlara da bak
+
+                        // İçinde "saat", "açık", "kapalı", "00" gibi terimler barındıran ancak sadece 100 karakterden kısa (spesifik) olan metinleri bul.
+                        const timeMatches = allDivs.map(d => (d as HTMLElement).innerText || '').filter(txt => {
+                            if (txt.length > 150) return false; // Çok uzun, büyük ihtimalle sayfanın tamamını kaplayan bir üst katmandır (Senaryodaki hata)
+                            return ((txt.includes(':00') || txt.includes(':30')) && (txt.includes('Açık') || txt.includes('Kapalı') || txt.includes('saat') || txt.includes('Open') || txt.includes('Closed')));
+                        });
+
+                        // En makul büyüklükte (ne çok kısa ne çok uzun) olan makul saat metnini seç
+                        if (timeMatches.length > 0) {
+                            // En uzun anlamlı saati seçer, bu sayede "Açık" deyip geçilmesini önleriz.
+                            operatingHours = cleanText(timeMatches.sort((a, b) => b.length - a.length)[0]);
+                        }
+                    }
+
+                    // Hala başarısız olduysa veya çok devasa bir string kaçtıysa güvenli silme
+                    // Hala başarısız olduysa veya çok devasa bir string kaçtıysa güvenli silme
+                    let finalOperatingHours: any = [];
+                    if (operatingHours.length > 250) {
+                        finalOperatingHours = [];
+                    } else if (operatingHours !== 'N/A') {
+                        // Birbirine yapışık gün-saat verilerini (Pazartesi10:00-01:00Salı) birbirinden ayır
+                        operatingHours = operatingHours
+                            .replace(/([a-zA-ZğüşöçIİĞÜŞÖÇ])([0-9]{1,2}:)/g, '$1 $2') // Harf ile Saat arasına boşluk koy (Pazartesi10:00 -> Pazartesi 10:00)
+                            .replace(/([0-9])([a-zA-ZğüşöçIİĞÜŞÖÇ])/g, '$1, $2') // Saat bitişi ile yeni Gün arasına virgül koy (01:00Salı -> 01:00, Salı)
+                            .replace(/Yeni saat önerin/ig, '') // Sonda kalan çöp metni temizle
+                            .replace(/\s+/g, ' ') // Fazla boşlukları temizle
+                            .trim();
+                        // Sondaki veya baştaki olası virgülleri at
+                        operatingHours = operatingHours.replace(/^[, ]+/, '').replace(/[, ]+$/, '');
+
+                        // ÖNEMLİ: Daha uzun olan gün isimlerini (Pazartesi, Cumartesi) önce yazmalıyız ki kısalarla karışmasın.
+                        const daysRegex = /(Pazartesi|Cumartesi|Çarşamba|Perşembe|Salı|Pazar|Cuma|Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)/gi;
+
+                        let matches: { day: string, index: number }[] = [];
+                        let match;
+                        while ((match = daysRegex.exec(operatingHours)) !== null) {
+                            matches.push({ day: match[0], index: match.index });
+                        }
+
+                        for (let i = 0; i < matches.length; i++) {
+                            const start = matches[i].index;
+                            const end = (i + 1 < matches.length) ? matches[i + 1].index : operatingHours.length;
+                            const fullText = operatingHours.substring(start, end).trim();
+                            const day = matches[i].day;
+                            let hours = fullText.replace(day, '').trim()
+                                .replace(/[–—]/g, '-') // Özel Google tirelerini normal tireye çevir
+                                .replace(/[^\x00-\x7F]/g, (char) => char === '–' || char === '—' ? '-' : '') // Kalan ASCII olmayan karakterleri süpür (saatler dışında)
+                                .replace(/^[-:,\s]+/, '') // Baştaki çöpleri sil
+                                .replace(/[, ]+$/, '');   // Sondaki çöpleri sil
+
+                            if (hours.length > 0) {
+                                finalOperatingHours.push({ day, hours });
+                            }
+                        }
+                    }
+
+                    if (finalOperatingHours.length === 0) finalOperatingHours = [];
+
                     const bodyText = document.body.innerText;
                     const reportedMatch = bodyText.match(/(\d+)\s+(?:kullanıcı bildirdi|users reported)/i);
                     const priceReportedCount = reportedMatch ? parseInt(reportedMatch[1]) : 0;
 
+                    const imageUrl = document.querySelector('button[data-value="Photo"] img, div[role="region"] img')?.getAttribute('src') || '';
+
                     return {
-                        name,
-                        rating,
-                        reviewCount,
-                        address,
-                        phone,
-                        website,
-                        directionLink: window.location.href,
-                        priceInfo,
-                        priceReportedCount,
-                        operatingHours,
-                        imageUrl: document.querySelector('button[data-value="Photo"] img, div[role="region"] img')?.getAttribute('src') || ''
+                        name, rating, reviewCount, address, phone, website,
+                        priceInfo, priceReportedCount, operatingHours: finalOperatingHours, imageUrl
+                    };
+                });
+
+                if (!overviewData || !overviewData.name) {
+                    this.addLog(`! [Uyarı] İsim bulunamadı (Sayfa yüklenemedi veya format farklı), atlandı`);
+                    continue;
+                }
+
+                // 2. Yorumları Çekmek İçin Tıkla ve Bekle
+                let rawReviews: any[] = [];
+                try {
+                    const clicked = await page.evaluate(() => {
+                        const tabs = Array.from(document.querySelectorAll('[role="tab"], button'));
+                        for (const tab of tabs) {
+                            const text = tab.textContent || '';
+                            const aria = tab.getAttribute('aria-label') || '';
+                            if (text.includes('Yorum') || aria.includes('Yorum') || text.includes('Review') || aria.includes('Review')) {
+                                (tab as HTMLElement).click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    });
+
+                    if (clicked) {
+                        await page.waitForTimeout(3000);
+                        for (let j = 0; j < 2; j++) {
+                            await page.mouse.wheel(0, 4000);
+                            await page.waitForTimeout(1000);
+                        }
+
+                        rawReviews = await page.evaluate(() => {
+                            const cleanText = (text: string | null | undefined) => {
+                                if (!text) return '';
+                                return text.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+                            };
+                            const revs: any[] = [];
+                            const seenReviews = new Set();
+
+                            // Yanlışlıkla kopya elementleri seçmemek için sadece tek bir kapsayıcı seçici:
+                            const reviewBlocks = document.querySelectorAll('div.jftiEf');
+
+                            for (const block of Array.from(reviewBlocks)) {
+                                if (revs.length >= 10) break;
+
+                                const author = cleanText((block.querySelector('.d4r55, .X43Kjb') as any)?.innerText || (block.querySelector('.TSUbDb') as any)?.innerText);
+                                const ratingStr = block.querySelector('span.kvMYJc, span[aria-label*="yıldız"], span[aria-label*="star"]')?.getAttribute('aria-label') || '';
+                                let rRating = 0;
+                                const rMatch = ratingStr.match(/(\d+)/);
+                                if (rMatch) rRating = parseInt(rMatch[1]);
+
+                                const text = cleanText((block.querySelector('.wiI7pd, .MyEned > span') as any)?.innerText);
+                                const time = cleanText((block.querySelector('.rsqaWe, .xRkHEb') as any)?.innerText);
+
+                                // Olası duplicate yorumları atlamak için imza
+                                const reviewSignature = `${author}-${text.substring(0, 10)}`;
+
+                                if (author && (text || rRating > 0) && !seenReviews.has(reviewSignature)) {
+                                    seenReviews.add(reviewSignature);
+                                    revs.push({ author, rating: rRating, text, time });
+                                }
+                            }
+                            return revs;
+                        });
                     }
-                })
+                } catch (e) {
+                    console.log("Review extraction skipped");
+                }
+
+                const data = {
+                    ...overviewData,
+                    directionLink: link,
+                    rawReviews
+                };
 
                 if (data && data.name) {
                     const businessId = crypto.createHash('md5').update(data.name + districtName).digest('hex')
                     await this.saveToDb({ ...data, businessId, query }, categoryName, districtName)
                     this.status.processedCount++
-                    this.addLog(`+ [DB] ${data.name} | R:${data.rating} | Y:${data.reviewCount} | F:${data.priceInfo}`)
+                    this.addLog(`+ [DB] ${data.name} | R:${data.rating} | Y:${data.reviewCount} | (Çekilen: ${data.rawReviews?.length || 0}) | F:${data.priceInfo}`)
                 }
-            } catch (err) {
+            } catch (err: any) {
+                this.addLog(`! [Hata] Firma atlandı (${link}): ${err.message}`)
                 continue
             }
         }
@@ -283,6 +429,7 @@ class ScraperEngine {
                     phone: data.phone,
                     imageUrl: data.imageUrl,
                     website: data.website,
+                    reviews: data.rawReviews || [],
                     categoryId: category.id,
                     districtId: district.id,
                     query: data.query,
@@ -301,6 +448,7 @@ class ScraperEngine {
                     phone: data.phone,
                     imageUrl: data.imageUrl,
                     website: data.website,
+                    reviews: data.rawReviews || [],
                     categoryId: category.id,
                     districtId: district.id,
                     query: data.query,
@@ -309,6 +457,7 @@ class ScraperEngine {
             })
         } catch (err: any) {
             console.error('DB Error:', err.message)
+            this.addLog(`! [Hata] DB Kayıt Hatası: ${err.message}`)
         }
     }
 }

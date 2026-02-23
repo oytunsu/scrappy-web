@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, BIGINT, String, Text, Numeric, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, BIGINT, String, Text, Numeric, DateTime, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from typing import List, Optional
@@ -54,10 +54,11 @@ class Business(Base):
     directionLink = Column(Text)
     priceInfo = Column(String(255))
     priceReportedCount = Column(Integer)
-    operatingHours = Column(Text)
+    operatingHours = Column(JSON)
     phone = Column(String(50))
     imageUrl = Column(Text)
     website = Column(Text)
+    reviews = Column(JSON)
     query = Column(String(500))
     timestamp = Column(DateTime)
     categoryId = Column(Integer, ForeignKey("Category.id"))
@@ -95,10 +96,11 @@ def get_all_businesses(db: Session = Depends(get_db)):
                 "DirectionLink": b.directionLink or "",
                 "PriceInfo": b.priceInfo or "N/A",
                 "PriceReportedCount": b.priceReportedCount or 0,
-                "OperatingHours": b.operatingHours or "N/A",
+                "OperatingHours": b.operatingHours or [],
                 "Phone": b.phone or "",
                 "ImageURL": b.imageUrl or "",
                 "Website": b.website or "",
+                "Reviews": b.reviews or [],
                 "Category": b.category.name if b.category else "N/A",
                 "District": b.district.name if b.district else "N/A",
                 "Query": b.query or "",
