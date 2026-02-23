@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model City {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  slug      String     @unique
+  districts District[]
+  createdAt DateTime   @default(now())
+}
+
+model District {
+  id         Int        @id @default(autoincrement())
+  name       String
+  slug       String
+  city       City       @relation(fields: [cityId], references: [id])
+  cityId     Int
+  businesses Business[]
+  jobs       ScrapeJob[]
+  createdAt  DateTime   @default(now())
+
+  @@unique([cityId, slug])
+}
+
+model Category {
+  id         Int        @id @default(autoincrement())
+  name       String     @unique
+  slug       String     @unique
+  isActive   Boolean    @default(true)
+  businesses Business[]
+  jobs       ScrapeJob[]
+  createdAt  DateTime   @default(now())
+}
+
+model Business {
+  id                 BigInt   @id @default(autoincrement())
+  businessId         String   @unique @db.VarChar(255)
+  businessName       String   @db.VarChar(500)
+  rating             Decimal? @db.Decimal(3, 2)
+  reviewCount        Int?     @default(0)
+  address            String?  @db.Text
+  directionLink      String?  @db.Text
+  priceInfo          String?  @db.VarChar(255)
+  priceReportedCount Int?     @default(0)
+  operatingHours     String?  @db.Text
+  phone              String?  @db.VarChar(50)
+  imageUrl           String?  @db.Text
+  website            String?  @db.Text
+  category           Category @relation(fields: [categoryId], references: [id])
+  categoryId         Int
+  district           District @relation(fields: [districtId], references: [id])
+  districtId         Int
+  query              String?  @db.VarChar(500)
+  timestamp          DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([districtId])
+  @@index([businessId])
+}
+
+model ScrapeJob {
+  id         Int           @id @default(autoincrement())
+  category   Category      @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  district   District      @relation(fields: [districtId], references: [id])
+  districtId Int
+  status     JobStatus     @default(PENDING)
+  lastRun    DateTime?
+  totalFound Int           @default(0)
+  logs       ScrapeLog[]
+  createdAt  DateTime      @default(now())
+
+  @@unique([categoryId, districtId])
+}
+
+model ScrapeLog {
+  id        BigInt   @id @default(autoincrement())
+  job       ScrapeJob @relation(fields: [jobId], references: [id])
+  jobId     Int
+  level     LogLevel @default(INFO)
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String @db.Text
+}
