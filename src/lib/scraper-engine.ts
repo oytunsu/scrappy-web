@@ -79,10 +79,18 @@ class ScraperEngine {
         this.addLog('Motor Başlatıldı. Tam veri seti çekiliyor...')
 
         try {
+            console.log('[Scraper] Launching browser...')
             this.browser = await chromium.launch({
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer'
+                ]
             })
+            console.log('[Scraper] Browser launched successfully')
 
             const context = await this.browser.newContext({
                 viewport: { width: 1280, height: 800 },

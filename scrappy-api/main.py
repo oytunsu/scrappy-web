@@ -6,6 +6,23 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 from typing import List, Optional
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+node_env = os.getenv("NODE_ENV", "development")
+env_file = ".env.production" if node_env == "production" else ".env"
+
+# List of possible locations for the env file
+possible_paths = [
+    os.path.join(os.path.dirname(__file__), env_file),
+    os.path.join(os.path.dirname(__file__), '..', env_file),
+    os.path.join(os.getcwd(), env_file)
+]
+
+for path in possible_paths:
+    if os.path.exists(path):
+        load_dotenv(path)
+        break
 
 # FastAPI Setup
 app = FastAPI(title="Scrappy Data Export API", version="1.0.0")
@@ -19,8 +36,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database Setup (Connecting to same MariaDB)
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root@127.0.0.1:3306/scrapper_dev"
+# Database Setup (Connecting to MariaDB)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    # Handle mysql:// or mysql+pymysql:// prefix
+    if DATABASE_URL.startswith("mysql://"):
+        SQLALCHEMY_DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://")
+    elif DATABASE_URL.startswith("mariadb://"):
+        SQLALCHEMY_DATABASE_URL = DATABASE_URL.replace("mariadb://", "mysql+pymysql://")
+    else:
+        SQLALCHEMY_DATABASE_URL = DATABASE_URL
+else:
+    DB_USER = os.getenv("DB_USER", "root")
+    DB_PASS = os.getenv("DB_PASSWORD", "")
+    DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+    DB_PORT = os.getenv("DB_PORT", "3306")
+    DB_NAME = os.getenv("DB_NAME", "scrapper_dev")
+    
+    if DB_PASS:
+        SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    else:
+        SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
