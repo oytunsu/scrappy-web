@@ -298,7 +298,12 @@ class ScraperEngine {
                     const reportedMatch = bodyText.match(/(\d+)\s+(?:kullanıcı bildirdi|users reported)/i);
                     const priceReportedCount = reportedMatch ? parseInt(reportedMatch[1]) : 0;
 
-                    const imageUrl = document.querySelector('button[data-value="Photo"] img, div[role="region"] img')?.getAttribute('src') || '';
+                    let imageUrl = document.querySelector('button[data-value="Photo"] img, div[role="region"] img, img[src*="googleusercontent.com/p/"]')?.getAttribute('src') || '';
+
+                    // cleardot.gif lazy load placeholder ise temizle (daha sonra dışarıda bekleyip tekrar denenebilir ama 2.5s bekleme zaten var)
+                    if (imageUrl.includes('cleardot.gif')) {
+                        imageUrl = '';
+                    }
 
                     return {
                         name, rating, reviewCount, address, phone, website,
@@ -309,6 +314,19 @@ class ScraperEngine {
                 if (!overviewData || !overviewData.name) {
                     this.addLog(`! [Uyarı] İsim bulunamadı (Sayfa yüklenemedi veya format farklı), atlandı`);
                     continue;
+                }
+
+                // EĞER ImageURL boş çıktıysa (lazy load bekliyorsa), 2 saniye daha bekle ve sadece resmi tekrar dene
+                if (!overviewData.imageUrl) {
+                    await page.waitForTimeout(2000);
+                    const retryImage = await page.evaluate(() => {
+                        const img = document.querySelector('button[data-value="Photo"] img, div[role="region"] img, img[src*="googleusercontent.com/p/"]');
+                        const src = img?.getAttribute('src') || '';
+                        return src.includes('cleardot.gif') ? '' : src;
+                    });
+                    if (retryImage) {
+                        overviewData.imageUrl = retryImage;
+                    }
                 }
 
                 // 2. Yorumları Çekmek İçin Tıkla ve Bekle
@@ -356,13 +374,14 @@ class ScraperEngine {
 
                                 const text = cleanText((block.querySelector('.wiI7pd, .MyEned > span') as any)?.innerText);
                                 const time = cleanText((block.querySelector('.rsqaWe, .xRkHEb') as any)?.innerText);
+                                const avatar = block.querySelector('img.NBa79, img[src*="googleusercontent.com/a/"]')?.getAttribute('src') || '';
 
                                 // Olası duplicate yorumları atlamak için imza
                                 const reviewSignature = `${author}-${text.substring(0, 10)}`;
 
                                 if (author && (text || rRating > 0) && !seenReviews.has(reviewSignature)) {
                                     seenReviews.add(reviewSignature);
-                                    revs.push({ author, rating: rRating, text, time });
+                                    revs.push({ author, rating: rRating, text, time, avatar });
                                 }
                             }
                             return revs;
