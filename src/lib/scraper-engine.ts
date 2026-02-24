@@ -217,12 +217,30 @@ class ScraperEngine {
                     const website = document.querySelector('a[data-item-id="authority"], .IT5z3c')?.getAttribute('href') || '';
 
                     let priceInfo = 'N/A';
-                    const priceEl = document.querySelector('span[aria-label*="Price"], span[aria-label*="Fiyat"], span[aria-label*="price"], .fontBodyMedium span[aria-label*="TL"]');
-                    if (priceEl) {
-                        const label = priceEl.getAttribute('aria-label') || '';
-                        priceInfo = cleanText(label.includes(':') ? label.split(':').pop() : label);
+
+                    // Yöntem 1: Rating alanının kardeş span'ı (en güvenilir)
+                    const ratingArea = document.querySelector('.F7nice');
+                    if (ratingArea && ratingArea.parentElement) {
+                        const siblings = Array.from(ratingArea.parentElement.children);
+                        for (const sib of siblings) {
+                            const t = (sib.textContent || '').trim();
+                            if (t.includes('₺') && t.length < 20) {
+                                priceInfo = cleanText(t);
+                                break;
+                            }
+                        }
                     }
 
+                    // Yöntem 2: aria-label ile arama (fallback)
+                    if (priceInfo === 'N/A') {
+                        const priceEl = document.querySelector('span[aria-label*="Price"], span[aria-label*="Fiyat"], span[aria-label*="price"]');
+                        if (priceEl) {
+                            const label = priceEl.getAttribute('aria-label') || '';
+                            priceInfo = cleanText(label.includes(':') ? label.split(':').pop() : label);
+                        }
+                    }
+
+                    // Yöntem 3: ₺ sembolü ile tüm span'larda ara (fallback)
                     if (priceInfo === 'N/A') {
                         const allSpans = Array.from(document.querySelectorAll('span'));
                         const priceSpan = allSpans.find(s => (s.innerText || '').includes('₺') && (s.innerText || '').length < 15);
@@ -309,16 +327,14 @@ class ScraperEngine {
                         // Daha geniş buton seçicileri
                         const hBtn = await page.$('button[data-item-id="oh"], .t39OBd, .OMl5r, [aria-label*="çalışma saatleri"], [aria-label*="hours"], div[role="button"] span[aria-label*="Çalışma saatleri"]');
                         if (hBtn) {
-                            // Eğer butonun kendisi değil kapsayıcısı lazımsa (div[role="button"])
                             const clickTarget = await page.evaluateHandle((el) => {
                                 if (el.tagName === 'SPAN') return el.parentElement;
                                 return el;
                             }, hBtn);
 
                             await (clickTarget as any).click();
-                            await page.waitForTimeout(1500);
+                            await page.waitForTimeout(2500);
                             const retryHours = await page.evaluate(() => {
-                                // Google'ın farklı tablo sınıfları
                                 const hoursTable = document.querySelector('table.eKPiq, table.y074mc, table.eK4R0e, .G86p4 table');
                                 if (hoursTable) {
                                     const rows = Array.from(hoursTable.querySelectorAll('tr'));
@@ -332,6 +348,26 @@ class ScraperEngine {
                             });
                             if (retryHours && retryHours.length > 0) {
                                 overviewData.operatingHours = retryHours;
+                            }
+                        }
+
+                        // İkinci deneme: Hala boşsa tekrar bekle ve dene
+                        if (!overviewData.operatingHours || overviewData.operatingHours.length < 5) {
+                            await page.waitForTimeout(2000);
+                            const retry2 = await page.evaluate(() => {
+                                const hoursTable = document.querySelector('table.eKPiq, table.y074mc, table.eK4R0e, .G86p4 table');
+                                if (hoursTable) {
+                                    const rows = Array.from(hoursTable.querySelectorAll('tr'));
+                                    return rows.map(row => {
+                                        const day = (row.querySelector('td:first-child, td.ylH6lf') as HTMLElement)?.innerText || (row.children[0] as HTMLElement)?.innerText || '';
+                                        const time = (row.querySelector('td:last-child, td.mxowUb') as HTMLElement)?.innerText || (row.children[1] as HTMLElement)?.innerText || '';
+                                        return { day: day.trim(), hours: time.trim() };
+                                    }).filter(h => h.day && h.hours);
+                                }
+                                return [];
+                            });
+                            if (retry2 && retry2.length > (overviewData.operatingHours?.length || 0)) {
+                                overviewData.operatingHours = retry2;
                             }
                         }
                     } catch (e) { }
@@ -357,57 +393,80 @@ class ScraperEngine {
                     const photoButton = await page.$('button[data-value="Photo"], button[aria-label*="otoğraf"], button[aria-label*="hoto"], .aoRNLd, .Dx2nRe, .ao3oP');
                     if (photoButton) {
                         await photoButton.click();
-                        await page.waitForSelector('.m6QErb', { timeout: 10000 }).catch(() => { });
-                        await page.waitForTimeout(3000); // Görsellerin asenkron gelmesi için
-
-                        // Gallery içindeki grid'i bul ve kaydır
-                        const galleryContainer = await page.$('.m6QErb.DxyBCb');
-                        if (galleryContainer) {
-                            for (let k = 0; k < 3; k++) {
-                                await page.mouse.wheel(0, 3000);
-                                await page.waitForTimeout(1000);
-                            }
+                        await page.waitForTimeout(2000);
+                    } else {
+                        // Fallback: Fotoğraflar tabı yoksa hero image'ı tıkla
+                        const heroImg = await page.$('button[jsaction*="pane.heroHeaderImage"], .ZKCDEc, img[src*="googleusercontent.com/p/"]');
+                        if (heroImg) {
+                            await heroImg.click();
+                            await page.waitForTimeout(2000);
                         }
+                    }
 
-                        galleryImages = await page.evaluate(() => {
-                            const urls: string[] = [];
-                            const items = document.querySelectorAll('img[src*="googleusercontent.com/p/"], div[style*="background-image"], a.MIgS0d');
+                    galleryImages = await page.evaluate(() => {
+                        const urls: string[] = [];
 
-                            items.forEach(el => {
-                                let src = '';
-                                if (el.tagName === 'IMG') {
-                                    src = (el as HTMLImageElement).src;
-                                } else if (el.tagName === 'A') {
-                                    const innerImg = el.querySelector('img');
-                                    if (innerImg) src = innerImg.src;
-                                    else {
-                                        const style = (el as HTMLElement).style.backgroundImage;
-                                        const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
-                                        if (match) src = match[1];
-                                    }
-                                } else {
-                                    const style = (el as HTMLElement).style.backgroundImage;
-                                    const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
-                                    if (match) src = match[1];
+                        // Yöntem 1: a.MIgS0d elementleri (Google Maps'in güncel galeri yapısı)
+                        const galleryLinks = document.querySelectorAll('a.MIgS0d');
+                        galleryLinks.forEach(el => {
+                            // İç div'lerdeki background-image'ı kontrol et
+                            const innerDivs = el.querySelectorAll('div[style*="background-image"]');
+                            innerDivs.forEach(div => {
+                                const style = (div as HTMLElement).style.backgroundImage;
+                                const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                if (match && match[1].includes('googleusercontent.com')) {
+                                    const cleanUrl = match[1].split('=')[0] + '=s1600';
+                                    urls.push(cleanUrl);
                                 }
+                            });
+                            // Ayrıca doğrudan a elementinin style'ını da kontrol et
+                            const aStyle = (el as HTMLElement).style.backgroundImage;
+                            if (aStyle) {
+                                const match = aStyle.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                if (match && match[1].includes('googleusercontent.com')) {
+                                    const cleanUrl = match[1].split('=')[0] + '=s1600';
+                                    urls.push(cleanUrl);
+                                }
+                            }
+                        });
 
-                                if (src && src.includes('googleusercontent.com/p/') && !src.includes('cleardot.gif')) {
+                        // Yöntem 2: Klasik img tag'ları (fallback)
+                        if (urls.length === 0) {
+                            const imgs = document.querySelectorAll('img[src*="googleusercontent.com/p/"]');
+                            imgs.forEach(img => {
+                                const src = (img as HTMLImageElement).src;
+                                if (src && !src.includes('cleardot.gif')) {
                                     const cleanUrl = src.split('=')[0] + '=s1600';
                                     urls.push(cleanUrl);
                                 }
                             });
-                            return [...new Set(urls)].slice(0, 15);
-                        });
-                        // Galeri'den çık (ESC ve X butonu ile garantiye al)
-                        await page.keyboard.press('Escape');
-                        await page.waitForTimeout(500);
-                        const closeBtn = await page.$('button[aria-label*="Kapat"], button[aria-label*="Close"], button.S9kv8e');
-                        if (closeBtn) await closeBtn.click();
-                        await page.waitForTimeout(1000);
-                    }
+                        }
+
+                        // Yöntem 3: Herhangi bir background-image (fallback)
+                        if (urls.length === 0) {
+                            const bgDivs = document.querySelectorAll('div[style*="background-image"]');
+                            bgDivs.forEach(div => {
+                                const style = (div as HTMLElement).style.backgroundImage;
+                                const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                if (match && match[1].includes('googleusercontent.com/p/')) {
+                                    const cleanUrl = match[1].split('=')[0] + '=s1600';
+                                    urls.push(cleanUrl);
+                                }
+                            });
+                        }
+
+                        return [...new Set(urls)].slice(0, 4);
+                    });
+                    // Galeri'den çık (ESC ve X butonu ile garantiye al)
+                    await page.keyboard.press('Escape');
+                    await page.waitForTimeout(500);
+                    const closeBtn = await page.$('button[aria-label*="Kapat"], button[aria-label*="Close"], button.S9kv8e');
+                    if (closeBtn) await closeBtn.click();
+                    await page.waitForTimeout(1000);
                 } catch (e) {
                     this.addLog(`! Galeri çekimi başarısız veya atlandı`);
                 }
+
 
                 // *** KRİTİK: Galeri sonrası sayfa state'i bozulmuş olabilir.
                 // Sayfayı orijinal business URL'sine geri yönlendir ve yeniden yükle.
@@ -458,13 +517,13 @@ class ScraperEngine {
                         } catch (e) { }
 
                         // Kaydırarak daha fazla yorum yükle
-                        for (let j = 0; j < 3; j++) {
-                            await page.mouse.wheel(0, 4000);
-                            await page.waitForTimeout(1500);
+                        for (let j = 0; j < 1; j++) {
+                            await page.mouse.wheel(0, 3000);
+                            await page.waitForTimeout(1000);
                         }
 
-
-                        rawReviews = await page.evaluate(() => {
+                        // Yorum çekme fonksiyonu (tekrar kullanılabilir)
+                        const extractReviews = () => page.evaluate(() => {
                             const cleanText = (text: string | null | undefined) => {
                                 if (!text) return '';
                                 return text.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -475,19 +534,16 @@ class ScraperEngine {
                             const reviewBlocks = document.querySelectorAll('div.jftiEf');
 
                             for (const block of Array.from(reviewBlocks)) {
-                                if (revs.length >= 15) break;
+                                if (revs.length >= 5) break;
 
-                                // Author selector expanded - Daha agresif arama
                                 const authorEl = block.querySelector('.d4r55, .X43Kjb, .al6Kxe, .TSUbDb, .W67Drf, .f0S8F, [class*="author"]');
                                 let author = cleanText((authorEl as any)?.innerText || authorEl?.textContent);
 
-                                // Yedek: Eğer hala boşsa ilk span'a bak
                                 if (!author) {
                                     const possibleAuthor = block.querySelector('button div[class*="font"]');
                                     if (possibleAuthor) author = cleanText((possibleAuthor as any).innerText);
                                 }
 
-                                // Rating Extraction
                                 const ratingEl = block.querySelector('span.kvMYJc, span[aria-label*="yıldız"], span[aria-label*="star"], span.kvS7H, .kx8fBe, [aria-label*="/5"]');
                                 const ratingStr = ratingEl?.getAttribute('aria-label') || ratingEl?.textContent || '';
                                 let rRating = 0;
@@ -500,7 +556,6 @@ class ScraperEngine {
                                 const text = cleanText((textEl as any)?.innerText || textEl?.textContent);
                                 const time = cleanText((block.querySelector('.rsqaWe, .xRkHEb, .P87Y0b, .OD9uAe') as any)?.innerText);
 
-                                // Avatar Selection
                                 const avatarImg = block.querySelector('img.NBa79, img.NBa79c, img[src*="googleusercontent.com/a/"], .WEBjve img');
                                 const avatar = avatarImg?.getAttribute('src') || '';
 
@@ -524,15 +579,40 @@ class ScraperEngine {
                             }
                             return revs;
                         });
+
+                        // İlk deneme
+                        rawReviews = await extractReviews();
+
+                        // Eğer 0 yorum çekildiyse, Google Maps henüz yüklememiş olabilir - tekrar dene
+                        if (rawReviews.length === 0) {
+                            this.addLog("! İlk denemede 0 yorum, 3sn bekleyip tekrar deneniyor...");
+                            await page.waitForTimeout(3000);
+                            // "Daha fazla" butonlarına tekrar bas
+                            try {
+                                const moreBtns2 = await page.$$('button[aria-label*="Daha fazla"], button[aria-label*="Show more"], button.w8nwRe.kyuRq');
+                                for (const btn of moreBtns2) {
+                                    await btn.click();
+                                    await page.waitForTimeout(300);
+                                }
+                            } catch (e) { }
+                            rawReviews = await extractReviews();
+                        }
                     }
+
                 } catch (e) {
                     console.log("Review extraction skipped");
                 }
 
+                // Ana görseli galeri listesinden çıkar (tekrar olmasın)
+                const mainImageBase = (overviewData.imageUrl || '').split('=')[0];
+                const filteredGallery = mainImageBase
+                    ? galleryImages.filter(url => url.split('=')[0] !== mainImageBase)
+                    : galleryImages;
+
                 const data = {
                     ...overviewData,
                     directionLink: link,
-                    galleryImages,
+                    galleryImages: filteredGallery.slice(0, 4),
                     rawReviews
                 };
 
