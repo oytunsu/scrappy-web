@@ -477,8 +477,64 @@ class ScraperEngine {
                 } catch (e) {
                     this.addLog(`! Sayfa yeniden yüklenemedi, yorumlar atlanabilir`);
                 }
+                // 2. Menü Öğelerini Çek
+                let menuItems: any[] = [];
+                try {
+                    const menuTabClick = await page.evaluate(() => {
+                        const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+                        for (const tab of tabs) {
+                            const text = (tab.textContent || '').toLowerCase().trim();
+                            if (text === 'menü' || text === 'menu') {
+                                (tab as HTMLElement).click();
+                                return { found: true };
+                            }
+                        }
+                        return { found: false };
+                    });
 
-                // 2. Yorumları Çekmek İçin Tıkla ve Bekle
+                    if (menuTabClick.found) {
+                        await page.waitForSelector('.K4UgGe', { timeout: 5000 }).catch(() => { });
+                        await page.waitForTimeout(2000);
+
+                        menuItems = await page.evaluate(() => {
+                            const items: any[] = [];
+                            const buttons = document.querySelectorAll('.K4UgGe');
+                            buttons.forEach(btn => {
+                                const name = (btn.getAttribute('aria-label') || '').trim();
+                                const img = btn.querySelector('img');
+                                const imgSrc = img ? (img.src || '') : '';
+                                // "Fotoğraf X/Y" gibi genel olanları atla, sadece yemek isimli olanları al
+                                if (name && !name.match(/^Foto\u011fraf \d+/) && !name.match(/^Photo \d+/) && imgSrc.includes('googleusercontent.com')) {
+                                    const cleanUrl = imgSrc.split('=')[0] + '=s800';
+                                    items.push({ name, imageUrl: cleanUrl });
+                                }
+                            });
+                            return items.slice(0, 10);
+                        });
+
+                        if (menuItems.length > 0) {
+                            this.addLog(`- Menü: ${menuItems.length} öğe bulundu`);
+                        }
+                    }
+                } catch (e) {
+                    // Menü çekimi opsiyonel - hata olursa devam et
+                }
+
+                // Yorumlar için sayfayı "Genel Bakış"a geri döndür
+                try {
+                    await page.evaluate(() => {
+                        const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+                        for (const tab of tabs) {
+                            const text = (tab.textContent || '').toLowerCase().trim();
+                            if (text.includes('genel') || text.includes('overview')) {
+                                (tab as HTMLElement).click();
+                                break;
+                            }
+                        }
+                    });
+                    await page.waitForTimeout(1000);
+                } catch (e) { }
+
                 let rawReviews: any[] = [];
                 try {
                     // Basit ve güvenilir: Sadece role="tab" elemanlarında ara
@@ -613,7 +669,8 @@ class ScraperEngine {
                     ...overviewData,
                     directionLink: link,
                     galleryImages: filteredGallery.slice(0, 4),
-                    rawReviews
+                    rawReviews,
+                    menuItems
                 };
 
                 if (data && data.name) {
@@ -677,6 +734,7 @@ class ScraperEngine {
                     images: data.galleryImages || [],
                     website: data.website,
                     reviews: data.rawReviews || [],
+                    menuItems: data.menuItems || [],
                     categoryId: category.id,
                     districtId: district.id,
                     query: data.query,
@@ -697,6 +755,7 @@ class ScraperEngine {
                     images: data.galleryImages || [],
                     website: data.website,
                     reviews: data.rawReviews || [],
+                    menuItems: data.menuItems || [],
                     categoryId: category.id,
                     districtId: district.id,
                     query: data.query,

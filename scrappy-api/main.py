@@ -98,6 +98,7 @@ class Business(Base):
     images = Column(JSON)
     website = Column(Text)
     reviews = Column(JSON)
+    menuItems = Column(JSON)
     query = Column(String(500))
     timestamp = Column(DateTime)
     categoryId = Column(Integer, ForeignKey("Category.id"))
@@ -120,10 +121,12 @@ def read_root():
     return {"status": "Scrappy Export API is Online", "version": "1.0.0"}
 
 @app.get("/api/v1/export/businesses")
-def get_all_businesses(db: Session = Depends(get_db)):
-    """Orijinal Python Scraper formatında (PascalCase) verileri export eder."""
+def get_all_businesses(skip: int = 0, limit: int = 500, db: Session = Depends(get_db)):
+    """Orijinal Python Scraper formatında (PascalCase) verileri export eder.
+    Pagination desteği: skip=0&limit=500
+    """
     try:
-        businesses = db.query(Business).all()
+        businesses = db.query(Business).offset(skip).limit(limit).all()
         result = []
         for b in businesses:
             result.append({
@@ -141,6 +144,7 @@ def get_all_businesses(db: Session = Depends(get_db)):
                 "Images": b.images or [],
                 "Website": b.website or "",
                 "Reviews": b.reviews or [],
+                "MenuItems": b.menuItems or [],
                 "Category": b.category.name if b.category else "N/A",
                 "District": b.district.name if b.district else "N/A",
                 "Query": b.query or "",

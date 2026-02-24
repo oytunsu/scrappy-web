@@ -53,6 +53,7 @@ model Business {
   images             Json?
   website            String?  @db.Text
   reviews            Json?
+  menuItems          Json?
   category           Category @relation(fields: [categoryId], references: [id])
   categoryId         Int
   district           District @relation(fields: [districtId], references: [id])
