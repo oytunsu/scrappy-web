@@ -50,6 +50,7 @@ model Business {
   operatingHours     Json?
   phone              String?  @db.VarChar(50)
   imageUrl           String?  @db.Text
+  images             Json?
   website            String?  @db.Text
   reviews            Json?
   category           Category @relation(fields: [categoryId], references: [id])

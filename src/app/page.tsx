@@ -35,6 +35,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [scraperStatus, setScraperStatus] = useState<any>(null)
+  const [mounted, setMounted] = useState(false)
+  const [isToggling, setIsToggling] = useState(false)
 
   const fetchStats = async () => {
     try {
@@ -62,19 +64,26 @@ export default function DashboardPage() {
   }
 
   const toggleScraper = async () => {
+    if (isToggling) return
+    setIsToggling(true)
     try {
       if (scraperStatus?.isRunning) {
         await fetch('/api/scraper/stop', { method: 'POST' })
       } else {
         await fetch('/api/scraper/start', { method: 'POST' })
       }
-      fetchScraperStatus()
+      // Statusu hemen çekmek yerine kısa bir gecikme bırakalım ki backend state güncellensin
+      setTimeout(fetchScraperStatus, 500)
     } catch (err) {
       console.error('Toggle failed')
+    } finally {
+      // 2 saniye boyunca butonu kilitli tutalım (spam önleme)
+      setTimeout(() => setIsToggling(false), 2000)
     }
   }
 
   useEffect(() => {
+    setMounted(true)
     fetchStats()
     fetchScraperStatus()
 
@@ -140,16 +149,17 @@ export default function DashboardPage() {
             </Button>
             <Button
               onClick={toggleScraper}
-              disabled={loading}
+              disabled={loading || isToggling}
               className={cn(
                 "h-10 font-black px-6 shadow-xl transition-all",
                 scraperStatus?.isRunning
                   ? "bg-destructive hover:bg-destructive/90 text-white"
-                  : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+                  : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_20px_rgba(59,130,246,0.3)]",
+                isToggling && "opacity-50 cursor-wait"
               )}
             >
-              <Play size={16} className={cn("mr-2 fill-current", scraperStatus?.isRunning && "animate-pulse")} />
-              {scraperStatus?.isRunning ? 'MOTORU DURDUR' : 'MOTORU ATEŞLE'}
+              <Play size={16} className={cn("mr-2 fill-current", (scraperStatus?.isRunning || isToggling) && "animate-pulse")} />
+              {isToggling ? 'İŞLENİYOR...' : (scraperStatus?.isRunning ? 'MOTORU DURDUR' : 'MOTORU ATEŞLE')}
             </Button>
           </div>
         </header>
@@ -191,15 +201,19 @@ export default function DashboardPage() {
                         </div>
                         <div className="p-6 font-mono text-[11px] h-[350px] overflow-y-auto space-y-1.5 leading-relaxed text-left">
                           <p className="text-primary font-bold">&gt;&gt;&gt; SCRAPPY PRO V1.0 STARTED</p>
-                          <p className="text-muted-foreground">[{new Date().toLocaleTimeString()}] System: Kernel integrity check passed.</p>
-                          <p className="text-muted-foreground">[{new Date().toLocaleTimeString()}] Network: Listening on port 3001...</p>
+                          {mounted && (
+                            <>
+                              <p className="text-muted-foreground">[{new Date().toLocaleTimeString()}] System: Kernel integrity check passed.</p>
+                              <p className="text-muted-foreground">[{new Date().toLocaleTimeString()}] Network: Listening on port 3001...</p>
+                            </>
+                          )}
 
                           {scraperStatus?.logs?.map((log: string, i: number) => (
                             <p key={i} className={cn(
                               "transition-all duration-300",
                               log.includes('Hata') || log.includes('Kritik') ? "text-destructive" :
-                                log.includes('Kaydedildi') ? "text-emerald-500" :
-                                  "text-muted-foreground"
+                                log.includes('Kaydedildi') || log.includes('+ [DB]') || log.includes('bulundu') ? "text-emerald-500" :
+                                  "text-muted-foreground font-mono"
                             )}>
                               {log}
                             </p>

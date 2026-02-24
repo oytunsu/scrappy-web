@@ -95,6 +95,7 @@ class Business(Base):
     operatingHours = Column(JSON)
     phone = Column(String(50))
     imageUrl = Column(Text)
+    images = Column(JSON)
     website = Column(Text)
     reviews = Column(JSON)
     query = Column(String(500))
@@ -137,6 +138,7 @@ def get_all_businesses(db: Session = Depends(get_db)):
                 "OperatingHours": b.operatingHours or [],
                 "Phone": b.phone or "",
                 "ImageURL": b.imageUrl or "",
+                "Images": b.images or [],
                 "Website": b.website or "",
                 "Reviews": b.reviews or [],
                 "Category": b.category.name if b.category else "N/A",

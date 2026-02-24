@@ -329,6 +329,53 @@ class ScraperEngine {
                     }
                 }
 
+                // --- Gallery Extraction ---
+                let galleryImages: string[] = [];
+                try {
+                    const photoButton = await page.$('button[data-value="Photo"], button[aria-label*="Fotoğraflar"], button[aria-label*="Photos"], .aoRNLd');
+                    if (photoButton) {
+                        await photoButton.click();
+                        await page.waitForTimeout(3000);
+
+                        // Gallery içindeki grid'i bul ve kaydır
+                        const galleryContainer = await page.$('.m6QErb.DxyBCb');
+                        if (galleryContainer) {
+                            for (let k = 0; k < 3; k++) {
+                                await page.mouse.wheel(0, 3000);
+                                await page.waitForTimeout(1000);
+                            }
+                        }
+
+                        galleryImages = await page.evaluate(() => {
+                            const urls: string[] = [];
+                            const items = document.querySelectorAll('img[src*="googleusercontent.com/p/"], div[style*="background-image"]');
+
+                            items.forEach(el => {
+                                let src = '';
+                                if (el.tagName === 'IMG') {
+                                    src = (el as HTMLImageElement).src;
+                                } else {
+                                    const style = (el as HTMLElement).style.backgroundImage;
+                                    const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                    if (match) src = match[1];
+                                }
+
+                                if (src && src.includes('googleusercontent.com/p/') && !src.includes('cleardot.gif')) {
+                                    // Kaliteyi artır (s1600 orijinal boyutun makul bir sınırı)
+                                    const cleanUrl = src.split('=')[0] + '=s1600';
+                                    urls.push(cleanUrl);
+                                }
+                            });
+                            return [...new Set(urls)].slice(0, 15);
+                        });
+                        // Galeri'den çık (ESC)
+                        await page.keyboard.press('Escape');
+                        await page.waitForTimeout(1000);
+                    }
+                } catch (e) {
+                    console.log("Gallery extraction skipped or failed");
+                }
+
                 // 2. Yorumları Çekmek İçin Tıkla ve Bekle
                 let rawReviews: any[] = [];
                 try {
@@ -376,12 +423,24 @@ class ScraperEngine {
                                 const time = cleanText((block.querySelector('.rsqaWe, .xRkHEb') as any)?.innerText);
                                 const avatar = block.querySelector('img.NBa79, img[src*="googleusercontent.com/a/"]')?.getAttribute('src') || '';
 
+                                // Yorum fotoğraflarını çek
+                                const reviewImages: string[] = [];
+                                const photoEls = block.querySelectorAll('button[style*="background-image"]');
+                                photoEls.forEach(el => {
+                                    const style = (el as HTMLElement).style.backgroundImage;
+                                    const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                    if (match) {
+                                        const url = match[1].split('=')[0] + '=s1600';
+                                        reviewImages.push(url);
+                                    }
+                                });
+
                                 // Olası duplicate yorumları atlamak için imza
                                 const reviewSignature = `${author}-${text.substring(0, 10)}`;
 
                                 if (author && (text || rRating > 0) && !seenReviews.has(reviewSignature)) {
                                     seenReviews.add(reviewSignature);
-                                    revs.push({ author, rating: rRating, text, time, avatar });
+                                    revs.push({ author, rating: rRating, text, time, avatar, images: reviewImages });
                                 }
                             }
                             return revs;
@@ -394,6 +453,7 @@ class ScraperEngine {
                 const data = {
                     ...overviewData,
                     directionLink: link,
+                    galleryImages,
                     rawReviews
                 };
 
@@ -455,6 +515,7 @@ class ScraperEngine {
                     operatingHours: data.operatingHours,
                     phone: data.phone,
                     imageUrl: data.imageUrl,
+                    images: data.galleryImages || [],
                     website: data.website,
                     reviews: data.rawReviews || [],
                     categoryId: category.id,
@@ -474,6 +535,7 @@ class ScraperEngine {
                     operatingHours: data.operatingHours,
                     phone: data.phone,
                     imageUrl: data.imageUrl,
+                    images: data.galleryImages || [],
                     website: data.website,
                     reviews: data.rawReviews || [],
                     categoryId: category.id,
@@ -489,4 +551,13 @@ class ScraperEngine {
     }
 }
 
-export const scraperEngine = ScraperEngine.getInstance()
+// Next.js hot-reload singleton
+const globalForScraper = global as unknown as {
+    scraperEngine: ScraperEngine | undefined
+}
+
+export const scraperEngine = globalForScraper.scraperEngine || ScraperEngine.getInstance()
+
+if (process.env.NODE_ENV !== 'production') {
+    globalForScraper.scraperEngine = scraperEngine
+}
