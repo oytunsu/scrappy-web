@@ -178,27 +178,27 @@ class ScraperEngine {
                     };
 
                     const name = cleanText(document.querySelector('h1')?.textContent) || '';
-                    const ratingText = document.querySelector('div.F7nice span[aria-hidden="true"]')?.textContent || '0';
+                    const ratingText = document.querySelector('div.F7nice span[aria-hidden="true"], .fontDisplayLarge, .TTX38c')?.textContent || '0';
                     const rating = parseFloat(ratingText.replace(',', '.')) || 0;
 
-                    const reviewEl = document.querySelector('div.F7nice span[aria-label*="review"], div.F7nice span[aria-label*="yorum"]');
+                    const reviewEl = document.querySelector('div.F7nice span[aria-label*="review"], div.F7nice span[aria-label*="yorum"], .fontBodyMedium .F7nice span');
                     let reviewCount = 0;
                     if (reviewEl) {
-                        const label = reviewEl.getAttribute('aria-label') || '';
+                        const label = reviewEl.getAttribute('aria-label') || reviewEl.textContent || '';
                         const match = label.replace(/\./g, '').replace(/,/g, '').match(/(\d+)/);
                         if (match) reviewCount = parseInt(match[1]);
                     }
 
                     // Google'da bazen "Adres: " gibi prefixler olur, iconlardan dolayı başta ekstra sembol kalabilir.
-                    let address = getElementText('button[data-item-id="address"]');
+                    let address = getElementText('button[data-item-id="address"], .RcC65b[data-item-id="address"]');
                     if (address.toLowerCase().includes('adres')) address = cleanText(address.replace(/adres/i, '').replace(/^[:\s]+/, ''));
 
-                    let phone = getElementText('button[data-item-id*="phone"]');
+                    let phone = getElementText('button[data-item-id*="phone"], .RcC65b[data-item-id*="phone"]');
 
-                    const website = document.querySelector('a[data-item-id="authority"]')?.getAttribute('href') || '';
+                    const website = document.querySelector('a[data-item-id="authority"], .IT5z3c')?.getAttribute('href') || '';
 
                     let priceInfo = 'N/A';
-                    const priceEl = document.querySelector('span[aria-label*="Price"], span[aria-label*="Fiyat"], span[aria-label*="price"]');
+                    const priceEl = document.querySelector('span[aria-label*="Price"], span[aria-label*="Fiyat"], span[aria-label*="price"], .fontBodyMedium span[aria-label*="TL"]');
                     if (priceEl) {
                         const label = priceEl.getAttribute('aria-label') || '';
                         priceInfo = cleanText(label.includes(':') ? label.split(':').pop() : label);
@@ -213,14 +213,14 @@ class ScraperEngine {
                     let operatingHours = 'N/A';
 
                     // Yöntem 1: Aria-label bul (Genelde 'Saatler: ...' şeklindedir)
-                    const hoursButton = document.querySelector('div[data-item-id="oh"], button[data-item-id="oh"]') || document.querySelector('.t39OBd');
+                    const hoursButton = document.querySelector('div[data-item-id="oh"], button[data-item-id="oh"], .t39OBd, .OMl5r');
                     if (hoursButton) {
                         const ariaLabel = hoursButton.getAttribute('aria-label') || '';
                         if (ariaLabel.length > 5 && (ariaLabel.toLowerCase().includes('saat') || ariaLabel.toLowerCase().includes('hour'))) {
                             operatingHours = cleanText(ariaLabel.replace(/Gizle|Göster|Hide|Show/ig, '').replace(/haftanın saatleri/ig, ''));
                         } else {
                             // Yöntem 2: Tablo / Detay içinde ara
-                            const hoursTable = document.querySelector('table.eKPiq'); // Bazen saatler tablo içindedir
+                            const hoursTable = document.querySelector('table.eKPiq, table.y074mc'); // Bazen saatler tablo içindedir
                             if (hoursTable) {
                                 operatingHours = cleanText((hoursTable as HTMLElement).innerText);
                             } else {
@@ -239,13 +239,11 @@ class ScraperEngine {
 
                         // İçinde "saat", "açık", "kapalı", "00" gibi terimler barındıran ancak sadece 100 karakterden kısa (spesifik) olan metinleri bul.
                         const timeMatches = allDivs.map(d => (d as HTMLElement).innerText || '').filter(txt => {
-                            if (txt.length > 150) return false; // Çok uzun, büyük ihtimalle sayfanın tamamını kaplayan bir üst katmandır (Senaryodaki hata)
+                            if (txt.length > 150) return false;
                             return ((txt.includes(':00') || txt.includes(':30')) && (txt.includes('Açık') || txt.includes('Kapalı') || txt.includes('saat') || txt.includes('Open') || txt.includes('Closed')));
                         });
 
-                        // En makul büyüklükte (ne çok kısa ne çok uzun) olan makul saat metnini seç
                         if (timeMatches.length > 0) {
-                            // En uzun anlamlı saati seçer, bu sayede "Açık" deyip geçilmesini önleriz.
                             operatingHours = cleanText(timeMatches.sort((a, b) => b.length - a.length)[0]);
                         }
                     }
@@ -316,6 +314,33 @@ class ScraperEngine {
                     continue;
                 }
 
+                // --- EĞER ÇALIŞMA SAATLERİ BOŞSA (Swissotel gibi devasa yerlerde bazen geç yüklenir) ---
+                if (!overviewData.operatingHours || overviewData.operatingHours.length === 0) {
+                    // Tekrar denemeden önce o butona tıkla (bazıları tıklayınca açılıyor)
+                    try {
+                        const hBtn = await page.$('button[data-item-id="oh"], .t39OBd, .OMl5r');
+                        if (hBtn) {
+                            await hBtn.click();
+                            await page.waitForTimeout(1000);
+                            const retryHours = await page.evaluate(() => {
+                                const hoursTable = document.querySelector('table.eKPiq, table.y074mc');
+                                if (hoursTable) {
+                                    const rows = Array.from(hoursTable.querySelectorAll('tr'));
+                                    return rows.map(row => {
+                                        const day = (row.querySelector('td:first-child') as HTMLElement)?.innerText || (row.children[0] as HTMLElement)?.innerText || '';
+                                        const time = (row.querySelector('td:last-child') as HTMLElement)?.innerText || (row.children[1] as HTMLElement)?.innerText || '';
+                                        return { day: day.trim(), hours: time.trim() };
+                                    }).filter(h => h.day && h.hours);
+                                }
+                                return [];
+                            });
+                            if (retryHours && retryHours.length > 0) {
+                                overviewData.operatingHours = retryHours;
+                            }
+                        }
+                    } catch (e) { }
+                }
+
                 // EĞER ImageURL boş çıktıysa (lazy load bekliyorsa), 2 saniye daha bekle ve sadece resmi tekrar dene
                 if (!overviewData.imageUrl) {
                     await page.waitForTimeout(2000);
@@ -332,9 +357,10 @@ class ScraperEngine {
                 // --- Gallery Extraction ---
                 let galleryImages: string[] = [];
                 try {
-                    const photoButton = await page.$('button[data-value="Photo"], button[aria-label*="Fotoğraflar"], button[aria-label*="Photos"], .aoRNLd');
+                    const photoButton = await page.$('button[data-value="Photo"], button[aria-label*="Fotoğraflar"], button[aria-label*="Photos"], .aoRNLd, .Dx2nRe');
                     if (photoButton) {
                         await photoButton.click();
+                        await page.waitForSelector('.m6QErb', { timeout: 10000 }).catch(() => { });
                         await page.waitForTimeout(3000);
 
                         // Gallery içindeki grid'i bul ve kaydır
@@ -348,12 +374,20 @@ class ScraperEngine {
 
                         galleryImages = await page.evaluate(() => {
                             const urls: string[] = [];
-                            const items = document.querySelectorAll('img[src*="googleusercontent.com/p/"], div[style*="background-image"]');
+                            const items = document.querySelectorAll('img[src*="googleusercontent.com/p/"], div[style*="background-image"], a.MIgS0d');
 
                             items.forEach(el => {
                                 let src = '';
                                 if (el.tagName === 'IMG') {
                                     src = (el as HTMLImageElement).src;
+                                } else if (el.tagName === 'A') {
+                                    const innerImg = el.querySelector('img');
+                                    if (innerImg) src = innerImg.src;
+                                    else {
+                                        const style = (el as HTMLElement).style.backgroundImage;
+                                        const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+                                        if (match) src = match[1];
+                                    }
                                 } else {
                                     const style = (el as HTMLElement).style.backgroundImage;
                                     const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
@@ -361,7 +395,6 @@ class ScraperEngine {
                                 }
 
                                 if (src && src.includes('googleusercontent.com/p/') && !src.includes('cleardot.gif')) {
-                                    // Kaliteyi artır (s1600 orijinal boyutun makul bir sınırı)
                                     const cleanUrl = src.split('=')[0] + '=s1600';
                                     urls.push(cleanUrl);
                                 }
@@ -394,6 +427,16 @@ class ScraperEngine {
 
                     if (clicked) {
                         await page.waitForTimeout(3000);
+
+                        // --- KLASİK: Daha fazla (More/Diğer) butonlarına bas ---
+                        try {
+                            const moreBtns = await page.$$('button[aria-label*="Daha fazla"], button[aria-label*="Show more"], button.w8nwRe.kyuRq');
+                            for (const btn of moreBtns) {
+                                await btn.click();
+                                await page.waitForTimeout(300);
+                            }
+                        } catch (e) { }
+
                         for (let j = 0; j < 2; j++) {
                             await page.mouse.wheel(0, 4000);
                             await page.waitForTimeout(1000);
@@ -404,28 +447,38 @@ class ScraperEngine {
                                 if (!text) return '';
                                 return text.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
                             };
+
                             const revs: any[] = [];
                             const seenReviews = new Set();
-
-                            // Yanlışlıkla kopya elementleri seçmemek için sadece tek bir kapsayıcı seçici:
                             const reviewBlocks = document.querySelectorAll('div.jftiEf');
 
                             for (const block of Array.from(reviewBlocks)) {
                                 if (revs.length >= 10) break;
 
-                                const author = cleanText((block.querySelector('.d4r55, .X43Kjb') as any)?.innerText || (block.querySelector('.TSUbDb') as any)?.innerText);
-                                const ratingStr = block.querySelector('span.kvMYJc, span[aria-label*="yıldız"], span[aria-label*="star"]')?.getAttribute('aria-label') || '';
+                                const author = cleanText((block.querySelector('.d4r55, .X43Kjb, .al6Kxe') as any)?.innerText || (block.querySelector('.TSUbDb') as any)?.innerText);
+
+                                // Rating Extraction (Star Aria-label OR Text fallback)
+                                const ratingEl = block.querySelector('span.kvMYJc, span[aria-label*="yıldız"], span[aria-label*="star"], span.kvS7H');
+                                const ratingStr = ratingEl?.getAttribute('aria-label') || ratingEl?.textContent || '';
                                 let rRating = 0;
                                 const rMatch = ratingStr.match(/(\d+)/);
-                                if (rMatch) rRating = parseInt(rMatch[1]);
+                                if (rMatch) {
+                                    rRating = parseInt(rMatch[1]);
+                                } else {
+                                    const textRating = (block.querySelector('.fontBodyLarge.fzvQIb') as any)?.innerText || '';
+                                    const textMatch = textRating.match(/(\d)\/5/);
+                                    if (textMatch) rRating = parseInt(textMatch[1]);
+                                }
 
-                                const text = cleanText((block.querySelector('.wiI7pd, .MyEned > span') as any)?.innerText);
+                                const text = cleanText((block.querySelector('.wiI7pd, .MyEned > span, .wiW3ob, .MyVUIb') as any)?.innerText);
                                 const time = cleanText((block.querySelector('.rsqaWe, .xRkHEb') as any)?.innerText);
-                                const avatar = block.querySelector('img.NBa79, img[src*="googleusercontent.com/a/"]')?.getAttribute('src') || '';
 
-                                // Yorum fotoğraflarını çek
+                                // Avatar Selection
+                                const avatarImg = block.querySelector('img.NBa79, img.NBa79c, img[src*="googleusercontent.com/a/"], .WEBjve img');
+                                const avatar = avatarImg?.getAttribute('src') || '';
+
                                 const reviewImages: string[] = [];
-                                const photoEls = block.querySelectorAll('button[style*="background-image"]');
+                                const photoEls = block.querySelectorAll('button[style*="background-image"], a.mYFivd[style*="background-image"]');
                                 photoEls.forEach(el => {
                                     const style = (el as HTMLElement).style.backgroundImage;
                                     const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
@@ -435,7 +488,6 @@ class ScraperEngine {
                                     }
                                 });
 
-                                // Olası duplicate yorumları atlamak için imza
                                 const reviewSignature = `${author}-${text.substring(0, 10)}`;
 
                                 if (author && (text || rRating > 0) && !seenReviews.has(reviewSignature)) {
