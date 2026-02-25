@@ -94,7 +94,9 @@ class ScraperEngine {
 
             const context = await this.browser.newContext({
                 viewport: { width: 1280, height: 800 },
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale: 'tr-TR',
+                timezoneId: 'Europe/Istanbul'
             })
 
             const page = await context.newPage()
@@ -134,6 +136,11 @@ class ScraperEngine {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
 
         try {
+            // Google Consent sayfası için (Avrupa sunucularında varsayılan gelir)
+            const acceptAllBtn = await page.$('button:has-text("Tümünü kabul et"), button:has-text("Accept all"), button[jsname="b3VHJd"]')
+            if (acceptAllBtn) await acceptAllBtn.click()
+
+            // Küçük popuplar için (eğer ilki yoksa)
             const cookieButton = await page.$('button[aria-label*="Accept"], button[aria-label*="Kabul"]')
             if (cookieButton) await cookieButton.click()
         } catch { }
