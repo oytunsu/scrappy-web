@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/stats')
+      const res = await fetch(`/api/stats?t=${Date.now()}`, { cache: 'no-store' })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setStats(data)
@@ -55,7 +55,7 @@ export default function DashboardPage() {
 
   const fetchScraperStatus = async () => {
     try {
-      const res = await fetch('/api/scraper/status')
+      const res = await fetch(`/api/scraper/status?t=${Date.now()}`, { cache: 'no-store' })
       const data = await res.json()
       setScraperStatus(data)
     } catch (err) {
