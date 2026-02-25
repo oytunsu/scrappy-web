@@ -178,9 +178,10 @@ export default function DashboardPage() {
                   <ConnectionError />
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                       <StatCard title="Toplam Kayıt" value={stats?.totalBusinesses?.toLocaleString('tr-TR') || '0'} sub="Toplam İşletme Sayısı" icon={<Database className="text-primary" />} />
-                      <StatCard title="Günlük Akış" value={stats?.todayCount?.toLocaleString('tr-TR') || '0'} sub="Yeni Eklenen Kayıtlar" icon={<TrendingUp className="text-emerald-500" />} />
+                      <StatCard title="Günlük Veri Girişi" value={stats?.todayCount?.toLocaleString('tr-TR') || '0'} sub="00:00 - 23:59 Arası" icon={<ClockIcon className="text-emerald-500" />} />
+                      <StatCard title="Günlük Akış" value={stats?.todayCount?.toLocaleString('tr-TR') || '0'} sub="Yeni Eklenen Kayıtlar" icon={<TrendingUp className="text-blue-500" />} />
                       <StatCard title="Bölge Kapsamı" value={stats?.districtCount || '0'} sub="Aktif İlçe Sayısı" icon={<MapPin className="text-amber-500" />} />
                       <StatCard
                         title="Motor Durumu"
