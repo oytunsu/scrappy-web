@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaMariaDb } from '@prisma/adapter-mariadb'
-import mariadb from 'mariadb'
+import * as mariadb from 'mariadb'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -17,7 +17,7 @@ async function main() {
         connectionLimit: 1
     })
 
-    const adapter = new PrismaMariaDb(pool)
+    const adapter = new PrismaMariaDb(pool as any)
     const prisma = new PrismaClient({ adapter })
 
     try {
