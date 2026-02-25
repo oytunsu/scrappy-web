@@ -7,7 +7,7 @@ export async function GET() {
             prisma.business.count(),
             prisma.business.count({
                 where: {
-                    createdAt: {
+                    updatedAt: {
                         gte: new Date(new Date().setHours(0, 0, 0, 0))
                     }
                 }
