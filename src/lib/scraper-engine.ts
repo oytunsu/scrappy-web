@@ -1,7 +1,13 @@
-import { chromium, Page, Browser } from 'playwright'
+import { Page, Browser } from 'playwright'
+import { chromium } from 'playwright-extra'
+import stealth from 'puppeteer-extra-plugin-stealth'
+import fs from 'fs'
+import path from 'path'
 import { prisma } from './prisma'
 import { SCRAPER_CONFIG } from './scraper-config'
 import crypto from 'crypto'
+
+chromium.use(stealth())
 
 export interface ScraperStatus {
     isRunning: boolean
@@ -132,18 +138,40 @@ class ScraperEngine {
     }
 
     private async scrapeGoogleMaps(page: Page, query: string, categoryName: string, districtName: string) {
-        const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`
+        // hl=tr parametresi Google'ın Türkçe dönmesini sağlar.
+        const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=tr`
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
 
         try {
             // Google Consent sayfası için (Avrupa sunucularında varsayılan gelir)
-            const acceptAllBtn = await page.$('button:has-text("Tümünü kabul et"), button:has-text("Accept all"), button[jsname="b3VHJd"]')
-            if (acceptAllBtn) await acceptAllBtn.click()
-
-            // Küçük popuplar için (eğer ilki yoksa)
-            const cookieButton = await page.$('button[aria-label*="Accept"], button[aria-label*="Kabul"]')
-            if (cookieButton) await cookieButton.click()
+            if (page.url().includes('consent.google.com')) {
+                const form = await page.waitForSelector('form[action*="consent.google.com"]', { timeout: 3000 }).catch(() => null);
+                if (form) {
+                    const acceptBtn = await page.$('button:has-text("Tümünü kabul et"), button:has-text("Accept all"), button:has-text("Alle akzeptieren"), button:has-text("Tout accepter"), button[jsname="b3VHJd"]') || await page.$('button[type="submit"]');
+                    if (acceptBtn) {
+                        await Promise.all([
+                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}),
+                            acceptBtn.click()
+                        ]);
+                    }
+                }
+            } else {
+                // Inline pop-ups
+                let acceptBtn = await page.$('button:has-text("Tümünü kabul et"), button:has-text("Accept all"), button:has-text("Alle akzeptieren"), button[jsname="b3VHJd"]');
+                if (!acceptBtn) {
+                    acceptBtn = await page.$('button[aria-label*="Accept"], button[aria-label*="Kabul"]');
+                }
+                if (acceptBtn) {
+                    await acceptBtn.click();
+                    await page.waitForTimeout(2000);
+                }
+            }
         } catch { }
+
+        // Load content wait before scroll mapping
+        try {
+             await page.waitForSelector('a[href*="/maps/place/"]', { timeout: 5000 }).catch(()=>{});
+        } catch(e) {}
 
         // Scroll to load results
         for (let i = 0; i < 4; i++) {
@@ -156,7 +184,21 @@ class ScraperEngine {
         )
 
         const uniqueLinks = [...new Set(businessLinks)]
-        this.addLog(`${uniqueLinks.length} firma bulundu. Detaylı tarama başladı...`)
+        
+        if (uniqueLinks.length === 0) {
+            try {
+                this.addLog("! 0 firma bulundu. Hata ayıklama için public klasörüne ekran görüntüsü kaydediliyor...")
+                const debugDir = path.resolve(process.cwd(), 'public')
+                if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }) }
+                const debugPath = path.join(debugDir, `debug-0-firma-${this.slugify(districtName)}.png`)
+                await page.screenshot({ path: debugPath, fullPage: true })
+                this.addLog(`-> URL'den tarayıcı ile kontrol edebilirsiniz: /debug-0-firma-${this.slugify(districtName)}.png`)
+            } catch(e) {
+                this.addLog("Ekran görüntüsü alınamadı.")
+            }
+        } else {
+            this.addLog(`${uniqueLinks.length} firma bulundu. Detaylı tarama başladı...`)
+        }
 
         for (const link of uniqueLinks) {
             if (this.shouldStop) break
