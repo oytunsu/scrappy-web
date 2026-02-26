@@ -218,7 +218,7 @@ export default function DashboardPage() {
                         </div>
                         <div
                           ref={logContainerRef}
-                          className="p-6 font-mono text-[11px] h-[350px] overflow-y-auto space-y-1.5 leading-relaxed text-left scroll-smooth"
+                          className="p-6 font-mono text-[11px] flex-1 overflow-y-auto space-y-1.5 leading-relaxed text-left scroll-smooth min-h-[350px]"
                         >
                           <p className="text-primary font-bold">&gt;&gt;&gt; SCRAPPY PRO V1.0 STARTED</p>
                           {mounted && (
@@ -241,15 +241,18 @@ export default function DashboardPage() {
                           ))}
                         </div>
 
-                        {scraperStatus?.isRunning && (
-                          <div className="bg-[#0a0a0a] border-t border-border p-3 px-6 flex justify-between items-center shrink-0">
+                        {/* Fixed Footer Section */}
+                        <div className="mt-auto shrink-0 border-t border-border bg-[#0a0a0a]">
+                          <div className="p-3 px-6 flex justify-between items-center">
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col">
                                 <p className="text-[8px] text-primary font-black uppercase tracking-[0.2em] mb-0.5">Aktif Hedef</p>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                                  <p className="text-[11px] font-bold text-white tracking-tight leading-none uppercase">
-                                    {scraperStatus.currentCategory} <span className="text-muted-foreground/40 mx-1">/</span> {scraperStatus.currentDistrict}
+                                  <div className={cn("w-1.5 h-1.5 rounded-full", scraperStatus?.isRunning ? "bg-primary animate-pulse" : "bg-muted-foreground/30")} />
+                                  <p className={cn("text-[11px] font-bold tracking-tight leading-none uppercase", scraperStatus?.isRunning ? "text-white" : "text-muted-foreground/50")}>
+                                    {scraperStatus?.isRunning
+                                      ? `${scraperStatus.currentCategory} / ${scraperStatus.currentDistrict}`
+                                      : "SİSTEM BEKLEMEDE"}
                                   </p>
                                 </div>
                               </div>
@@ -257,24 +260,26 @@ export default function DashboardPage() {
                             <div className="flex items-center gap-6">
                               <div className="text-right">
                                 <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-0.5">Oturum Verisi</p>
-                                <p className="text-lg font-black text-white leading-none font-mono tracking-tighter">{scraperStatus.processedCount}</p>
+                                <p className="text-lg font-black text-white leading-none font-mono tracking-tighter">
+                                  {scraperStatus?.processedCount || 0}
+                                </p>
                               </div>
                             </div>
                           </div>
-                        )}
 
-                        <div className="bg-[#111] border-t border-border p-2 px-6 flex justify-between items-center shrink-0">
-                          <div className="flex gap-4">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                              <span className="text-[8px] text-muted-foreground uppercase font-black">Yeni Kayıt</span>
+                          <div className="bg-[#111] border-t border-border/50 p-2 px-6 flex justify-between items-center">
+                            <div className="flex gap-4">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                <span className="text-[8px] text-muted-foreground uppercase font-black">Yeni Kayıt</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                                <span className="text-[8px] text-muted-foreground uppercase font-black">Güncelleme</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                              <span className="text-[8px] text-muted-foreground uppercase font-black">Güncelleme</span>
-                            </div>
+                            <div className="w-1.5 h-3 bg-primary animate-pulse" />
                           </div>
-                          <div className="w-1.5 h-3 bg-primary animate-pulse" />
                         </div>
                       </Card>
 
