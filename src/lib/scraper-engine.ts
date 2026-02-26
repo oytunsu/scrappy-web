@@ -150,7 +150,7 @@ class ScraperEngine {
                     const acceptBtn = await page.$('button:has-text("Tümünü kabul et"), button:has-text("Accept all"), button:has-text("Alle akzeptieren"), button:has-text("Tout accepter"), button[jsname="b3VHJd"]') || await page.$('button[type="submit"]');
                     if (acceptBtn) {
                         await Promise.all([
-                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}),
+                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => { }),
                             acceptBtn.click()
                         ]);
                     }
@@ -170,8 +170,8 @@ class ScraperEngine {
 
         // Load content wait before scroll mapping
         try {
-             await page.waitForSelector('a[href*="/maps/place/"]', { timeout: 5000 }).catch(()=>{});
-        } catch(e) {}
+            await page.waitForSelector('a[href*="/maps/place/"]', { timeout: 5000 }).catch(() => { });
+        } catch (e) { }
 
         // Scroll to load results
         for (let i = 0; i < 4; i++) {
@@ -184,7 +184,7 @@ class ScraperEngine {
         )
 
         const uniqueLinks = [...new Set(businessLinks)]
-        
+
         if (uniqueLinks.length === 0) {
             try {
                 this.addLog("! 0 firma bulundu. Hata ayıklama için public klasörüne ekran görüntüsü kaydediliyor...")
@@ -193,7 +193,7 @@ class ScraperEngine {
                 const debugPath = path.join(debugDir, `debug-0-firma-${this.slugify(districtName)}.png`)
                 await page.screenshot({ path: debugPath, fullPage: true })
                 this.addLog(`-> URL'den tarayıcı ile kontrol edebilirsiniz: /debug-0-firma-${this.slugify(districtName)}.png`)
-            } catch(e) {
+            } catch (e) {
                 this.addLog("Ekran görüntüsü alınamadı.")
             }
         } else {
@@ -724,9 +724,10 @@ class ScraperEngine {
 
                 if (data && data.name) {
                     const businessId = crypto.createHash('md5').update(data.name + districtName).digest('hex')
-                    await this.saveToDb({ ...data, businessId, query }, categoryName, districtName)
+                    const isUpdate = await this.saveToDb({ ...data, businessId, query }, categoryName, districtName)
                     this.status.processedCount++
-                    this.addLog(`+ [DB] ${data.name} | R:${data.rating} | Y:${data.reviewCount} | (Çekilen: ${data.rawReviews?.length || 0}) | F:${data.priceInfo}`)
+                    const prefix = isUpdate ? '↻ [UPDATE]' : '+ [NEW]'
+                    this.addLog(`${prefix} ${data.name} | R:${data.rating} | Y:${data.reviewCount} | (Çekilen: ${data.rawReviews?.length || 0}) | F:${data.priceInfo || 'N/A'}`)
                 }
             } catch (err: any) {
                 this.addLog(`! [Hata] Firma atlandı (${link}): ${err.message}`)
@@ -735,7 +736,7 @@ class ScraperEngine {
         }
     }
 
-    private async saveToDb(data: any, categoryName: string, districtName: string) {
+    private async saveToDb(data: any, categoryName: string, districtName: string): Promise<boolean> {
         try {
             const city = await prisma.city.upsert({
                 where: { name: SCRAPER_CONFIG.city },
@@ -765,6 +766,12 @@ class ScraperEngine {
                     name: categoryName,
                     slug: categorySlug
                 }
+            })
+
+            // Önce var olup olmadığını kontrol et
+            const existing = await prisma.business.findUnique({
+                where: { businessId: data.businessId },
+                select: { id: true }
             })
 
             await prisma.business.upsert({
@@ -811,9 +818,12 @@ class ScraperEngine {
                     timestamp: new Date()
                 }
             })
+
+            return !!existing
         } catch (err: any) {
             console.error('DB Error:', err.message)
             this.addLog(`! [Hata] DB Kayıt Hatası: ${err.message}`)
+            return false
         }
     }
 }

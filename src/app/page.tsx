@@ -41,6 +41,11 @@ export default function DashboardPage() {
   const [scraperStatus, setScraperStatus] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
   const [isToggling, setIsToggling] = useState(false)
+  const logEndRef = React.useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
 
   const fetchStats = async () => {
     try {
@@ -100,6 +105,12 @@ export default function DashboardPage() {
       clearInterval(scraperInterval)
     }
   }, [scraperStatus?.isRunning])
+
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      scrollToBottom()
+    }
+  }, [scraperStatus?.logs, activeTab])
 
   return (
     <div className="flex h-screen bg-background overflow-hidden text-foreground selection:bg-primary selection:text-primary-foreground">
@@ -217,27 +228,50 @@ export default function DashboardPage() {
                             <p key={i} className={cn(
                               "transition-all duration-300",
                               log.includes('Hata') || log.includes('Kritik') ? "text-destructive" :
-                                log.includes('Kaydedildi') || log.includes('+ [DB]') || log.includes('bulundu') ? "text-emerald-500" :
-                                  "text-muted-foreground font-mono"
+                                log.includes('↻ [UPDATE]') ? "text-amber-500" :
+                                  log.includes('+ [NEW]') || log.includes('bulundu') ? "text-emerald-500" :
+                                    "text-muted-foreground font-mono"
                             )}>
                               {log}
                             </p>
                           ))}
+                          <div ref={logEndRef} />
+                        </div>
 
-                          {scraperStatus?.isRunning && (
-                            <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded flex justify-between items-center animate-in fade-in slide-in-from-bottom-2">
-                              <div>
-                                <p className="text-[9px] text-primary font-black uppercase tracking-widest">Şu An Taranan</p>
-                                <p className="text-xs font-bold text-white">{scraperStatus.currentCategory} / {scraperStatus.currentDistrict}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-[9px] text-primary font-black uppercase tracking-widest">İşlenen Firma</p>
-                                <p className="text-xl font-black text-white">{scraperStatus.processedCount}</p>
+                        {scraperStatus?.isRunning && (
+                          <div className="bg-[#0a0a0a] border-t border-border p-3 px-6 flex justify-between items-center animate-in fade-in slide-in-from-bottom-2">
+                            <div className="flex items-center gap-4">
+                              <div className="flex flex-col">
+                                <p className="text-[8px] text-primary font-black uppercase tracking-[0.2em] mb-0.5">Aktif Hedef</p>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                                  <p className="text-[11px] font-bold text-white tracking-tight leading-none uppercase">
+                                    {scraperStatus.currentCategory} <span className="text-muted-foreground/40 mx-1">/</span> {scraperStatus.currentDistrict}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          )}
+                            <div className="flex items-center gap-6">
+                              <div className="text-right">
+                                <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-0.5">Oturum Verisi</p>
+                                <p className="text-lg font-black text-white leading-none font-mono tracking-tighter">{scraperStatus.processedCount}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
-                          <div className="w-2 h-4 bg-primary animate-pulse inline-block" />
+                        <div className="bg-[#111] border-t border-border p-2 px-6 flex justify-between items-center">
+                          <div className="flex gap-4">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                              <span className="text-[8px] text-muted-foreground uppercase font-black">Yeni Kayıt</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                              <span className="text-[8px] text-muted-foreground uppercase font-black">Güncelleme</span>
+                            </div>
+                          </div>
+                          <div className="w-1.5 h-3 bg-primary animate-pulse" />
                         </div>
                       </Card>
 
