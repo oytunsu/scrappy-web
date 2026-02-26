@@ -37,14 +37,15 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const [scraperStatus, setScraperStatus] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
   const [isToggling, setIsToggling] = useState(false)
-  const logEndRef = React.useRef<HTMLDivElement>(null)
+  const logContainerRef = React.useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
+    }
   }
 
   const fetchStats = async () => {
@@ -215,7 +216,10 @@ export default function DashboardPage() {
                           </div>
                           <span className="text-[10px] font-mono text-muted-foreground/40 italic">secure_tunnel: 3001</span>
                         </div>
-                        <div className="p-6 font-mono text-[11px] h-[350px] overflow-y-auto space-y-1.5 leading-relaxed text-left">
+                        <div
+                          ref={logContainerRef}
+                          className="p-6 font-mono text-[11px] h-[350px] overflow-y-auto space-y-1.5 leading-relaxed text-left scroll-smooth"
+                        >
                           <p className="text-primary font-bold">&gt;&gt;&gt; SCRAPPY PRO V1.0 STARTED</p>
                           {mounted && (
                             <>
@@ -235,11 +239,10 @@ export default function DashboardPage() {
                               {log}
                             </p>
                           ))}
-                          <div ref={logEndRef} />
                         </div>
 
                         {scraperStatus?.isRunning && (
-                          <div className="bg-[#0a0a0a] border-t border-border p-3 px-6 flex justify-between items-center animate-in fade-in slide-in-from-bottom-2">
+                          <div className="bg-[#0a0a0a] border-t border-border p-3 px-6 flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col">
                                 <p className="text-[8px] text-primary font-black uppercase tracking-[0.2em] mb-0.5">Aktif Hedef</p>
@@ -260,7 +263,7 @@ export default function DashboardPage() {
                           </div>
                         )}
 
-                        <div className="bg-[#111] border-t border-border p-2 px-6 flex justify-between items-center">
+                        <div className="bg-[#111] border-t border-border p-2 px-6 flex justify-between items-center shrink-0">
                           <div className="flex gap-4">
                             <div className="flex items-center gap-1.5">
                               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
