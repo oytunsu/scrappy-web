@@ -208,8 +208,8 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      <Card className="lg:col-span-2 border-border overflow-hidden flex flex-col shadow-2xl bg-black/40">
-                        <div className="bg-[#111] border-b border-border p-3 flex justify-between items-center">
+                      <Card className="lg:col-span-2 border-border overflow-hidden flex flex-col shadow-2xl bg-black/40 h-[550px]">
+                        <div className="bg-[#111] border-b border-border p-3 flex justify-between items-center shrink-0">
                           <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Scrappy Console Output</span>
@@ -218,7 +218,7 @@ export default function DashboardPage() {
                         </div>
                         <div
                           ref={logContainerRef}
-                          className="p-6 font-mono text-[11px] flex-1 overflow-y-auto space-y-1.5 leading-relaxed text-left scroll-smooth min-h-[350px]"
+                          className="p-6 font-mono text-[11px] flex-1 overflow-y-auto space-y-1.5 leading-relaxed text-left min-h-[350px]"
                         >
                           <p className="text-primary font-bold">&gt;&gt;&gt; SCRAPPY PRO V1.0 STARTED</p>
                           {mounted && (
