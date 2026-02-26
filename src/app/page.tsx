@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   Clock as ClockIcon,
   ShieldCheck,
-  Users as UsersIcon
+  Users as UsersIcon,
+  Calendar,
+  ArrowUpRight,
+  ArrowDownRight,
+  History
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -257,6 +261,14 @@ export default function DashboardPage() {
                         </Button>
                       </Card>
                     </div>
+
+                    {/* Daily Logs Table */}
+                    <div className="grid grid-cols-1 gap-8">
+                      <DailyStatsTable
+                        stats={stats?.dailyStats}
+                        onViewReport={() => setActiveTab('database')}
+                      />
+                    </div>
                   </>
                 )}
               </motion.div>
@@ -377,6 +389,134 @@ function ConnectionError() {
         <Button variant="outline" className="h-12 px-8 font-black uppercase tracking-widest opacity-50 cursor-not-allowed">
           Hata Logları
         </Button>
+      </div>
+    </Card>
+  )
+}
+
+function DailyStatsTable({ stats = [], onViewReport }: { stats: any[], onViewReport: () => void }) {
+  return (
+    <Card className="border-border bg-black/40 overflow-hidden shadow-2xl">
+      <div className="bg-[#111] border-b border-border p-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <History size={16} className="text-primary" />
+          <h3 className="text-xs font-black uppercase tracking-widest text-foreground">Günlük Veri Girişi Logları</h3>
+        </div>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-500/20 border border-emerald-500/50" />
+            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Normal Akış</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-border/50 bg-muted/20">
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">İşlem Tarihi</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">İşletme Kaydı</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Değişim</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">En Popüler Kategori</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Odak Bölge</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Aksiyon</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/30">
+            {stats && stats.length > 0 ? (
+              stats.map((row, i) => {
+                const prevCount = stats[i + 1]?.count || row.count;
+                const diff = (row.count - prevCount);
+                const isUp = diff >= 0;
+
+                return (
+                  <motion.tr
+                    key={i}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="hover:bg-white/[0.02] transition-colors group"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-muted rounded-lg group-hover:bg-primary/10 transition-colors">
+                          <Calendar size={14} className="text-muted-foreground group-hover:text-primary" />
+                        </div>
+                        <span className="text-sm font-bold font-mono text-white/90">
+                          {new Date(row.date).toLocaleDateString('tr-TR', {
+                            day: '2-digit',
+                            month: 'long'
+                          })}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="text-lg font-black font-mono tracking-tighter text-white">
+                        {row.count.toLocaleString('tr-TR')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {isUp ? (
+                          <ArrowUpRight size={14} className="text-emerald-500" />
+                        ) : (
+                          <ArrowDownRight size={14} className="text-destructive" />
+                        )}
+                        <span className={cn(
+                          "text-[11px] font-black font-mono",
+                          isUp ? "text-emerald-500" : "text-destructive"
+                        )}>
+                          {isUp ? '+' : ''}{diff}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-500/10 rounded border border-blue-500/20">
+                          <Database size={12} className="text-blue-500" />
+                        </div>
+                        <span className="text-[11px] font-bold text-white/70 uppercase tracking-tight">
+                          {row.topCategory}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-amber-500/10 rounded border border-amber-500/20">
+                          <MapPin size={12} className="text-amber-500" />
+                        </div>
+                        <span className="text-[11px] font-bold text-white/70 uppercase tracking-tight">
+                          {row.topDistrict}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Button
+                        onClick={onViewReport}
+                        variant="outline"
+                        className="h-8 px-4 text-[10px] font-black uppercase tracking-widest border-primary/20 hover:bg-primary hover:text-primary-foreground transition-all"
+                      >
+                        RAPORA GİT
+                      </Button>
+                    </td>
+                  </motion.tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground text-xs italic">
+                  Son 7 güne ait veri girişi kaydı bulunamadı.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bg-[#0a0a0a] p-3 border-t border-border/50 text-right">
+        <span className="text-[9px] text-muted-foreground font-mono italic">
+          * Veriler veritabanı anlık kayıtlarına göre otomatik oluşturulmuştur.
+        </span>
       </div>
     </Card>
   )
