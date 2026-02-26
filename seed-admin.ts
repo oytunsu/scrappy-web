@@ -5,14 +5,14 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const DATABASE_URL = process.env.DATABASE_URL || 'mariadb://root@127.0.0.1:3306/scrapper_dev'
+const DATABASE_URL = process.env.DATABASE_URL || 'mariadb://user@127.0.0.1:3306/db'
 
 async function main() {
     const adapter = new PrismaMariaDb(DATABASE_URL)
     const prisma = new PrismaClient({ adapter })
 
-    const username = 'oytun'
-    const password = '19801982Os'
+    const username = process.env.ADMIN_USERNAME || 'admin'
+    const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!'
 
     console.log(`Creating admin user: ${username}...`)
 

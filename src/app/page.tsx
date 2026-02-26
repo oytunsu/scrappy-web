@@ -140,7 +140,7 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-[#030303] relative">
+      <main className="flex-1 overflow-y-scroll bg-[#030303] relative custom-scrollbar">
         {/* Background Grid Accent */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
 
@@ -167,7 +167,7 @@ export default function DashboardPage() {
               onClick={toggleScraper}
               disabled={loading || isToggling}
               className={cn(
-                "h-10 font-black px-6 shadow-xl transition-all",
+                "h-10 font-black px-6 shadow-xl transition-all min-w-[180px] flex items-center justify-center", // min-w eklendi
                 scraperStatus?.isRunning
                   ? "bg-destructive hover:bg-destructive/90 text-white"
                   : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_20px_rgba(59,130,246,0.3)]",
@@ -175,7 +175,9 @@ export default function DashboardPage() {
               )}
             >
               <Play size={16} className={cn("mr-2 fill-current", (scraperStatus?.isRunning || isToggling) && "animate-pulse")} />
-              {isToggling ? 'İŞLENİYOR...' : (scraperStatus?.isRunning ? 'MOTORU DURDUR' : 'MOTORU ATEŞLE')}
+              <span className="truncate">
+                {isToggling ? 'İŞLENİYOR...' : (scraperStatus?.isRunning ? 'MOTORU DURDUR' : 'MOTORU ATEŞLE')}
+              </span>
             </Button>
           </div>
         </header>
@@ -194,10 +196,9 @@ export default function DashboardPage() {
                   <ConnectionError />
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       <StatCard title="Toplam Kayıt" value={stats?.totalBusinesses?.toLocaleString('tr-TR') || '0'} sub="Toplam İşletme Sayısı" icon={<Database className="text-primary" />} />
                       <StatCard title="Günlük Veri Girişi" value={stats?.todayCount?.toLocaleString('tr-TR') || '0'} sub="00:00 - 23:59 Arası" icon={<ClockIcon className="text-emerald-500" />} />
-                      <StatCard title="Günlük Akış" value={stats?.todayCount?.toLocaleString('tr-TR') || '0'} sub="Yeni Eklenen Kayıtlar" icon={<TrendingUp className="text-blue-500" />} />
                       <StatCard title="Bölge Kapsamı" value={stats?.districtCount || '0'} sub="Aktif İlçe Sayısı" icon={<MapPin className="text-amber-500" />} />
                       <StatCard
                         title="Motor Durumu"
@@ -377,11 +378,11 @@ function SidebarItem({ icon, label, active, onClick }: any) {
 
 function StatCard({ title, value, sub, icon }: any) {
   return (
-    <Card className="p-6 border-border relative group hover:border-primary/50 transition-all cursor-default bg-card/20 backdrop-blur-sm">
+    <Card className="p-6 border-border relative group hover:border-primary/50 transition-all cursor-default bg-card/20 backdrop-blur-sm min-h-[140px]">
       <div className="flex justify-between items-start relative z-10">
         <div>
           <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-2 opacity-50 group-hover:opacity-100 transition-opacity">{title}</p>
-          <h4 className="text-3xl font-black font-mono tracking-tighter transition-all group-hover:tracking-normal group-hover:text-primary">{value}</h4>
+          <h4 className="text-3xl font-black font-mono tracking-tighter transition-all group-hover:tracking-normal group-hover:text-primary tabular-nums">{value}</h4>
           <p className="text-[9px] text-muted-foreground font-black uppercase mt-3 tracking-wider bg-muted w-fit px-1.5 py-0.5">{sub}</p>
         </div>
         <div className="p-3 bg-muted group-hover:bg-primary/20 transition-all">
@@ -400,7 +401,7 @@ function CategoryProgress({ label, count, percent }: any) {
     <div className="space-y-2.5">
       <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
         <span className="text-muted-foreground">{label}</span>
-        <span className="text-primary font-mono">{count.toLocaleString('tr-TR')}</span>
+        <span className="text-primary font-mono tabular-nums">{count.toLocaleString('tr-TR')}</span>
       </div>
       <div className="h-1 w-full bg-muted/30 relative overflow-hidden">
         <motion.div
@@ -493,7 +494,7 @@ function DailyStatsTable({ stats = [], onViewReport }: { stats: any[], onViewRep
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="text-lg font-black font-mono tracking-tighter text-white">
+                      <span className="text-lg font-black font-mono tracking-tighter text-white tabular-nums">
                         {row.count.toLocaleString('tr-TR')}
                       </span>
                     </td>
@@ -505,7 +506,7 @@ function DailyStatsTable({ stats = [], onViewReport }: { stats: any[], onViewRep
                           <ArrowDownRight size={14} className="text-destructive" />
                         )}
                         <span className={cn(
-                          "text-[11px] font-black font-mono",
+                          "text-[11px] font-black font-mono tabular-nums",
                           isUp ? "text-emerald-500" : "text-destructive"
                         )}>
                           {isUp ? '+' : ''}{diff}

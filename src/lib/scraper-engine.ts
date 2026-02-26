@@ -82,9 +82,12 @@ class ScraperEngine {
         this.status.processedCount = 0
         this.status.logs = []
 
-        this.addLog('Motor Başlatıldı. Tam veri seti çekiliyor...')
+        this.addLog('Motor Başlatıldı. Akıllı görev listesi kontrol ediliyor...')
 
         try {
+            // Görevleri senkronize et (Yeni ilçe/kategori eklenmişse tabloya ekle)
+            await this.syncJobs()
+
             console.log('[Scraper] Launching browser...')
             this.browser = await chromium.launch({
                 headless: true,
@@ -107,26 +110,71 @@ class ScraperEngine {
 
             const page = await context.newPage()
 
-            for (const district of SCRAPER_CONFIG.districts) {
-                if (this.shouldStop) break
-                this.status.currentDistrict = district
-
-                for (const category of SCRAPER_CONFIG.categories) {
-                    if (this.shouldStop) break
-                    this.status.currentCategory = category
-
-                    const query = `${category}, ${district}, ${SCRAPER_CONFIG.city}`
-                    this.addLog(`Sorgu: ${query}`)
-
-                    try {
-                        await this.scrapeGoogleMaps(page, query, category, district)
-                    } catch (err: any) {
-                        this.addLog(`Hata (${query}): ${err.message}`)
+            // Akıllı Döngü: En eski taranmış veya hiç taranmamış görevi bul
+            while (!this.shouldStop) {
+                const nextJob = await prisma.scrapeJob.findFirst({
+                    where: {
+                        category: { name: { in: SCRAPER_CONFIG.categories } },
+                        district: { name: { in: SCRAPER_CONFIG.districts } }
+                    },
+                    orderBy: [
+                        { lastRun: 'asc' }, // nulls first (hiç taranmamışlar başa)
+                        { id: 'asc' }
+                    ],
+                    include: {
+                        category: true,
+                        district: true
                     }
+                })
+
+                if (!nextJob) {
+                    this.addLog('Yapılacak görev bulunamadı veya yapılandırma boş.')
+                    break
                 }
+
+                this.status.currentDistrict = nextJob.district.name
+                this.status.currentCategory = nextJob.category.name
+                const query = `${nextJob.category.name}, ${nextJob.district.name}, ${SCRAPER_CONFIG.city}`
+
+                const lastRunText = nextJob.lastRun
+                    ? ` (Son Tarama: ${new Date(nextJob.lastRun).toLocaleDateString()})`
+                    : ' (Hiç taranmadı)'
+
+                this.addLog(`>>> Görev: ${query}${lastRunText}`)
+
+                try {
+                    await prisma.scrapeJob.update({
+                        where: { id: nextJob.id },
+                        data: { status: 'RUNNING' }
+                    })
+
+                    const foundCount = await this.scrapeGoogleMaps(page, query, nextJob.category.name, nextJob.district.name)
+
+                    await prisma.scrapeJob.update({
+                        where: { id: nextJob.id },
+                        data: {
+                            status: 'COMPLETED',
+                            lastRun: new Date(),
+                            totalFound: foundCount
+                        }
+                    })
+                } catch (err: any) {
+                    this.addLog(`İş Hatası (${query}): ${err.message}`)
+                    await prisma.scrapeJob.update({
+                        where: { id: nextJob.id },
+                        data: { status: 'FAILED' }
+                    }).catch(() => { })
+                }
+
+                if (this.shouldStop) break
+
+                // Görevler arası kısa bir nefes aldır
+                await page.waitForTimeout(3000)
             }
 
-            this.addLog('Tüm bölgeler tarandı.')
+            if (!this.shouldStop) {
+                this.addLog('Tüm görev havuzu başarıyla işlendi.')
+            }
         } catch (err: any) {
             this.addLog(`Kritik Hata: ${err.message}`)
         } finally {
@@ -137,7 +185,58 @@ class ScraperEngine {
         }
     }
 
-    private async scrapeGoogleMaps(page: Page, query: string, categoryName: string, districtName: string) {
+    private async syncJobs() {
+        try {
+            const city = await prisma.city.upsert({
+                where: { name: SCRAPER_CONFIG.city },
+                update: {},
+                create: {
+                    name: SCRAPER_CONFIG.city,
+                    slug: this.slugify(SCRAPER_CONFIG.city)
+                }
+            })
+
+            for (const districtName of SCRAPER_CONFIG.districts) {
+                const districtSlug = this.slugify(districtName)
+                const district = await prisma.district.upsert({
+                    where: { cityId_slug: { cityId: city.id, slug: districtSlug } },
+                    update: {},
+                    create: {
+                        name: districtName,
+                        slug: districtSlug,
+                        cityId: city.id
+                    }
+                })
+
+                for (const categoryName of SCRAPER_CONFIG.categories) {
+                    const categorySlug = this.slugify(categoryName)
+                    const category = await prisma.category.upsert({
+                        where: { name: categoryName },
+                        update: {},
+                        create: {
+                            name: categoryName,
+                            slug: categorySlug
+                        }
+                    })
+
+                    await prisma.scrapeJob.upsert({
+                        where: { categoryId_districtId: { categoryId: category.id, districtId: district.id } },
+                        update: {},
+                        create: {
+                            categoryId: category.id,
+                            districtId: district.id,
+                            status: 'PENDING'
+                        }
+                    })
+                }
+            }
+        } catch (err: any) {
+            console.error('Job Sync Error:', err.message)
+            this.addLog(`! [Hata] Görev listesi senkronize edilemedi: ${err.message}`)
+        }
+    }
+
+    private async scrapeGoogleMaps(page: Page, query: string, categoryName: string, districtName: string): Promise<number> {
         // hl=tr parametresi Google'ın Türkçe dönmesini sağlar.
         const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=tr`
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -173,19 +272,51 @@ class ScraperEngine {
             await page.waitForSelector('a[href*="/maps/place/"]', { timeout: 5000 }).catch(() => { });
         } catch (e) { }
 
-        // Scroll to load results
-        for (let i = 0; i < 4; i++) {
+        // --- DERİN TARAMA (SMART SCROLL) ---
+        this.addLog("- Bölge derin taranıyor (sonsuz kaydırma)...")
+        let lastHeight = 0
+        let scrollAttempts = 0
+        const maxScrolls = 25 // Maksimum 25 kaydırma (Yaklaşık 100-200 firma)
+
+        while (scrollAttempts < maxScrolls) {
             await page.mouse.wheel(0, 5000)
             await page.waitForTimeout(2000)
+
+            const currentHeight = await page.evaluate(() => {
+                const scrollable = document.querySelector('div[role="feed"]')
+                return scrollable ? scrollable.scrollHeight : document.body.scrollHeight
+            })
+
+            if (currentHeight === lastHeight) {
+                // Eğer sayfa boyu değişmediyse 2 kez daha dene (yavaş yükleme durumu için)
+                await page.waitForTimeout(2000)
+                const retryHeight = await page.evaluate(() => {
+                    const scrollable = document.querySelector('div[role="feed"]')
+                    return scrollable ? scrollable.scrollHeight : document.body.scrollHeight
+                })
+                if (retryHeight === lastHeight) break
+            }
+
+            lastHeight = currentHeight
+            scrollAttempts++
         }
 
-        const businessLinks = await page.$$eval('a[href*="/maps/place/"]', (anchors: any[]) =>
-            anchors.map(a => a.href)
-        )
+        const businessDataList = await page.evaluate(() => {
+            const items = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'))
+            return items.map(a => {
+                const container = a.closest('.Nv26el') || a.parentElement;
+                const name = container?.querySelector('.qBF1Pd')?.textContent || '';
+                return {
+                    link: (a as HTMLAnchorElement).href,
+                    name: name.trim()
+                }
+            }).filter(item => item.link && item.name)
+        })
 
-        const uniqueLinks = [...new Set(businessLinks)]
+        // Linkleri ve isimleri tekilleştir
+        const uniqueData = Array.from(new Map(businessDataList.map(item => [item.link, item])).values())
 
-        if (uniqueLinks.length === 0) {
+        if (uniqueData.length === 0) {
             try {
                 this.addLog("! 0 firma bulundu. Hata ayıklama için public klasörüne ekran görüntüsü kaydediliyor...")
                 const debugDir = path.resolve(process.cwd(), 'public')
@@ -197,14 +328,27 @@ class ScraperEngine {
                 this.addLog("Ekran görüntüsü alınamadı.")
             }
         } else {
-            this.addLog(`${uniqueLinks.length} firma bulundu. Detaylı tarama başladı...`)
+            this.addLog(`${uniqueData.length} firma bulundu. Akıllı tarama başladı...`)
         }
 
-        for (const link of uniqueLinks) {
+        for (const item of uniqueData) {
             if (this.shouldStop) break
 
             try {
-                await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 })
+                // --- ERKEN TEŞHİS (DETAYA GİRMEDEN KONTROL) ---
+                const businessId = crypto.createHash('md5').update(item.name + districtName).digest('hex')
+                const existing = await prisma.business.findUnique({
+                    where: { businessId },
+                    select: { id: true }
+                })
+
+                if (existing) {
+                    this.addLog(`--- [SKIP] ${item.name} (Veritabanında mevcut)`)
+                    continue
+                }
+
+                // Sadece veritabanında yoksa detaya gir
+                await page.goto(item.link, { waitUntil: 'domcontentloaded', timeout: 30000 })
                 await page.waitForTimeout(2500)
 
                 // 1. Özet Verileri (İsim, Telefon vs) DOM'dan Çek
@@ -520,7 +664,7 @@ class ScraperEngine {
                 // *** KRİTİK: Galeri sonrası sayfa state'i bozulmuş olabilir.
                 // Sayfayı orijinal business URL'sine geri yönlendir ve yeniden yükle.
                 try {
-                    await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    await page.goto(item.link, { waitUntil: 'domcontentloaded', timeout: 30000 });
                     await page.waitForTimeout(2500);
                     this.addLog(`- Sayfa yeniden yüklendi (galeri sonrası temizlik)`);
                 } catch (e) {
@@ -716,7 +860,7 @@ class ScraperEngine {
 
                 const data = {
                     ...overviewData,
-                    directionLink: link,
+                    directionLink: item.link,
                     galleryImages: filteredGallery.slice(0, 4),
                     rawReviews,
                     menuItems
@@ -730,10 +874,11 @@ class ScraperEngine {
                     this.addLog(`${prefix} ${data.name} | R:${data.rating} | Y:${data.reviewCount} | (Çekilen: ${data.rawReviews?.length || 0}) | F:${data.priceInfo || 'N/A'}`)
                 }
             } catch (err: any) {
-                this.addLog(`! [Hata] Firma atlandı (${link}): ${err.message}`)
+                this.addLog(`! [Hata] Firma atlandı (${item.link}): ${err.message}`)
                 continue
             }
         }
+        return uniqueData.length
     }
 
     private async saveToDb(data: any, categoryName: string, districtName: string): Promise<boolean> {

@@ -6,7 +6,7 @@ const globalForPrisma = global as unknown as {
     prisma: PrismaClient | undefined
 }
 
-const DATABASE_URL = process.env.DATABASE_URL || 'mysql://scrappy_user:Scrappy123!@localhost:3306/scrapper_dev'
+const DATABASE_URL = process.env.DATABASE_URL || 'mysql://user:pass@localhost:3306/db'
 
 const maskedUrl = DATABASE_URL.replace(/:.+@/, ':****@')
 console.log(`[Prisma] Connecting to: ${maskedUrl}`)

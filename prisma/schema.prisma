@@ -10,31 +10,31 @@ model City {
   id        Int        @id @default(autoincrement())
   name      String     @unique
   slug      String     @unique
-  districts District[]
   createdAt DateTime   @default(now())
+  districts District[]
 }
 
 model District {
-  id         Int        @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   name       String
   slug       String
-  city       City       @relation(fields: [cityId], references: [id])
   cityId     Int
+  createdAt  DateTime    @default(now())
   businesses Business[]
+  city       City        @relation(fields: [cityId], references: [id])
   jobs       ScrapeJob[]
-  createdAt  DateTime   @default(now())
 
   @@unique([cityId, slug])
 }
 
 model Category {
-  id         Int        @id @default(autoincrement())
-  name       String     @unique
-  slug       String     @unique
-  isActive   Boolean    @default(true)
+  id         Int         @id @default(autoincrement())
+  name       String      @unique
+  slug       String      @unique
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
   businesses Business[]
   jobs       ScrapeJob[]
-  createdAt  DateTime   @default(now())
 }
 
 model Business {
@@ -50,18 +50,18 @@ model Business {
   operatingHours     Json?
   phone              String?  @db.VarChar(50)
   imageUrl           String?  @db.Text
-  images             Json?
   website            String?  @db.Text
-  reviews            Json?
-  menuItems          Json?
-  category           Category @relation(fields: [categoryId], references: [id])
   categoryId         Int
-  district           District @relation(fields: [districtId], references: [id])
   districtId         Int
   query              String?  @db.VarChar(500)
   timestamp          DateTime @default(now())
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  reviews            Json?
+  images             Json?
+  menuItems          Json?
+  category           Category @relation(fields: [categoryId], references: [id])
+  district           District @relation(fields: [districtId], references: [id])
 
   @@index([categoryId])
   @@index([districtId])
@@ -69,27 +69,51 @@ model Business {
 }
 
 model ScrapeJob {
-  id         Int           @id @default(autoincrement())
-  category   Category      @relation(fields: [categoryId], references: [id])
+  id         Int         @id @default(autoincrement())
   categoryId Int
-  district   District      @relation(fields: [districtId], references: [id])
   districtId Int
-  status     JobStatus     @default(PENDING)
+  status     JobStatus   @default(PENDING)
   lastRun    DateTime?
-  totalFound Int           @default(0)
+  totalFound Int         @default(0)
+  createdAt  DateTime    @default(now())
+  category   Category    @relation(fields: [categoryId], references: [id])
+  district   District    @relation(fields: [districtId], references: [id])
   logs       ScrapeLog[]
-  createdAt  DateTime      @default(now())
 
   @@unique([categoryId, districtId])
+  @@index([districtId], map: "ScrapeJob_districtId_fkey")
 }
 
 model ScrapeLog {
-  id        BigInt   @id @default(autoincrement())
-  job       ScrapeJob @relation(fields: [jobId], references: [id])
+  id        BigInt    @id @default(autoincrement())
   jobId     Int
-  level     LogLevel @default(INFO)
-  message   String   @db.Text
+  level     LogLevel  @default(INFO)
+  message   String    @db.Text
+  createdAt DateTime  @default(now())
+  job       ScrapeJob @relation(fields: [jobId], references: [id])
+
+  @@index([jobId], map: "ScrapeLog_jobId_fkey")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
   createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String @db.Text
+}
+
+model ScrapeSession {
+  id             Int       @id @default(autoincrement())
+  startTime      DateTime  @default(now())
+  endTime        DateTime?
+  processedCount Int       @default(0)
+  status         String    @default("RUNNING")
+  createdAt      DateTime  @default(now())
 }
 
 enum JobStatus {
@@ -103,16 +127,4 @@ enum LogLevel {
   INFO
   WARNING
   ERROR
-}
-
-model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  password  String
-  createdAt DateTime @default(now())
-}
-
-model Setting {
-  key   String @id
-  value String @db.Text
 }
