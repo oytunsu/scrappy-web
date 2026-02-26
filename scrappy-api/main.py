@@ -126,7 +126,7 @@ def get_all_businesses(skip: int = 0, limit: int = 500, db: Session = Depends(ge
     Pagination desteği: skip=0&limit=500
     """
     try:
-        businesses = db.query(Business).offset(skip).limit(limit).all()
+        businesses = db.query(Business).order_by(Business.timestamp.desc()).offset(skip).limit(limit).all()
         result = []
         for b in businesses:
             result.append({

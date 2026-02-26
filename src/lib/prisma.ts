@@ -1,5 +1,10 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaMariaDb } from '@prisma/adapter-mariadb'
+import path from 'path'
+import dotenv from 'dotenv'
+
+// Load .env from root if not already loaded (Next.js automatically does this, but for external scripts/contexts we ensure it)
+dotenv.config({ path: path.resolve(process.cwd(), '.env') })
 
 // Next.js hot-reload singleton
 const globalForPrisma = global as unknown as {

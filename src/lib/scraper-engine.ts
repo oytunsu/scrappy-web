@@ -336,11 +336,14 @@ class ScraperEngine {
 
             try {
                 // --- ERKEN TEŞHİS (DETAYA GİRMEDEN KONTROL) ---
-                const businessId = crypto.createHash('md5').update(item.name + districtName).digest('hex')
+                const safeName = item.name.trim()
+                const safeDistrict = districtName.trim()
+                const businessId = crypto.createHash('md5').update(safeName + safeDistrict).digest('hex')
                 const existing = await prisma.business.findUnique({
                     where: { businessId },
                     select: { id: true }
                 })
+                const prefixLog = `[${new Date().toLocaleTimeString()}]`
 
                 if (existing) {
                     this.addLog(`--- [SKIP] ${item.name} (Veritabanında mevcut)`)
@@ -867,7 +870,9 @@ class ScraperEngine {
                 };
 
                 if (data && data.name) {
-                    const businessId = crypto.createHash('md5').update(data.name + districtName).digest('hex')
+                    const safeName = data.name.trim()
+                    const safeDistrict = districtName.trim()
+                    const businessId = crypto.createHash('md5').update(safeName + safeDistrict).digest('hex')
                     const isUpdate = await this.saveToDb({ ...data, businessId, query }, categoryName, districtName)
                     this.status.processedCount++
                     const prefix = isUpdate ? '↻ [UPDATE]' : '+ [NEW]'
